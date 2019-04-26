@@ -8,7 +8,7 @@ Run the Simulate_Double_Integrator.m file
 
 ## Authors
 
-* **Venkatraman Renganathan** - *Initial work* - [PurpleBooth](https://github.com/venkatramanrenganathan)
+* **Venkatraman Renganathan** - [Github Profile Link](https://github.com/venkatramanrenganathan)
 
 ## License
 
