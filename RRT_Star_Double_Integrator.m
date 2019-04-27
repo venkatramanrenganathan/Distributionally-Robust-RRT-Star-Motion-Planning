@@ -1,6 +1,7 @@
 % Rapidly Exploring Random Tree (RRT) - Star
 % Builds and visulaizes an RRT-Star in the plane with rectangular obstacles and
 % nth-order integrator dynamics
+% Implements Distributionally Robust Collison Check
 
 clear all; close all; clc;
 
@@ -58,8 +59,6 @@ for k=1:num_nodes
     xrand = [rand_free(path_check_param) zeros(1,length(x0) - 2)];     
     plot(xrand(1), xrand(2), 'x', 'Color', [0 .5 .5], 'MarkerSize',15);
     
-    
-    
     % Pick the closest node from existing list to branch out from    
     [xnearest, Snearest] = NearestStateDistribution(xrand, T, P0); % find nearest vertex in the current tree   
     
@@ -82,8 +81,7 @@ for k=1:num_nodes
             drawnow
             hold on
 
-            % compute cost for new vertex to nearest one
-            %T.costs = [T.costs; T.costs(find(T.NodeMeans == kron(ones(size(T.NodeMeans,1),1), xnearest),1)) + norm(xnearest - x_new)]; 
+            % compute cost for new vertex to nearest one            
             T.costs = [T.costs; T.costs(find(T.NodeMeans == kron(ones(size(T.NodeMeans,1),1), xnearest),1)) + (xnearest - x_new)*P0*(xnearest - x_new)']; 
 
             % Initialize best cost to currently known value

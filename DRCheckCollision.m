@@ -20,7 +20,7 @@ a_y  = [0 1 0 0]';
 x_v  = [0 0 1 0]';
 y_v  = [0 0 0 1]';
 
-add_p = 0.0;
+add_p = 0.05; % Should be 0
 
 for i = 1:size(Obstacles,1) % check if sample hits an obstacle
     
