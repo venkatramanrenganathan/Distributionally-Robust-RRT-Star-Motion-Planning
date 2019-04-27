@@ -159,7 +159,6 @@ for k=1:num_nodes
             h_1 = ellipse(sqrt(E(1,1)), sqrt(E(2,2)), atan2(V(1,2), V(1,1)), xnew(1), xnew(2));            
             pause(0.0005);
             break;
-
         end   
     end
     
