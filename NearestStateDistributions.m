@@ -10,11 +10,17 @@ function [V, Q] = NearestStateDistributions(x, T, P, r)
 % Outputs: xnear = state of nearest vertex
 %          Snear = covariance matrix of nearest vertex
 
-    n         = size(T.NodeMeans, 1);
-    q         = T.NodeMeans;
-%     distances = sqrt(sum((q - kron(ones(n,1), x)).^2, 2));
-    distances = (q - kron(ones(n,1), x))*P*(q - kron(ones(n,1), x))';
-    Q         = T.NodeCovariances;
-    V         = find(distances < r);
-
+q = T.NodeMeans;
+n = size(q, 1);
+m = size(q, 2);
+V = [];
+Q = [];
+for i = 1:n
+    distances(i) = (q(i,:) - x)*P*(q(i,:) - x)'; % distances = sqrt(sum((q - kron(ones(n,1), x)).^2, 2));
+    if distances(i) < r
+        V = [V; q(i,:)]; 
+        Q = [Q; T.NodeCovariances(1+m*(i-1):m*i,:)];
+    end
+end
+    
 end
