@@ -13,13 +13,11 @@ function [V, Q] = NearestStateDistributions(x, T, P, r)
 q = T.NodeMeans;
 n = size(q, 1);
 m = size(q, 2);
-V = [];
-Q = [];
 for i = 1:n
-    distances(i) = (q(i,:) - x)*P*(q(i,:) - x)'; % distances = sqrt(sum((q - kron(ones(n,1), x)).^2, 2));
+    distances(i) = (q{i} - x)*P*(q{i} - x)'; % distances = sqrt(sum((q - kron(ones(n,1), x)).^2, 2));
     if distances(i) < r
-        V = [V; q(i,:)];         
-        Q = [Q; T.NodeCovariances{i}]; % Q = [Q; T.NodeCovariances(1+m*(i-1):m*i,:)]; - Old implementation
+        V{end+1} = q{i};         
+        Q{end+1} = T.NodeCovariances{i}; % Q = [Q; T.NodeCovariances(1+m*(i-1):m*i,:)]; - Old implementation
     end
 end
     

@@ -22,7 +22,7 @@ T.costs        = 0;
 
 %% Initialize Parameters of Tree
 num_nodes            = 600; %number of nodes
-T.NodeMeans          = x0;
+T.NodeMeans{1}       = x0;
 T.NodeCovariances{1} = S0; 
 P0                   = CostToGo(A, B, Q, QT, R, Th); % optimal unconstrained cost to go matrix (to origin)
 
@@ -80,42 +80,44 @@ for k=1:num_nodes
     if collision_check_flag % no collisions  
         line([xnearest(1), x_new(1)], [xnearest(2), x_new(2)], 'Color', 'k', 'LineWidth', 2);
         drawnow
-        hold on
-
-        % compute cost for new vertex to nearest one            
-        T.costs = [T.costs; T.costs(find(T.NodeMeans == kron(ones(size(T.NodeMeans,1),1), xnearest),1)) + (xnearest - x_new)*P0*(xnearest - x_new)']; 
-
-        % Initialize best cost to currently known value
-        x_min   = xnearest;        
-        c_min   = T.costs(end);
-
-        T.NodeMeans              = [T.NodeMeans; x_new]; % add vertex to tree
-        T.NodeCovariances{end+1} = S_new; 
+        hold on                
 
         % Within a radius of r, find all nearest vertices in current tree
+        % Xnear is cell containing all nearby nodes as its elements
+        % Snear is cell containing the covariances of nearby nodes as its elements
         search_radius  = min(5*sqrt(log(length(nodes))/length(nodes)),radius);  
         [Xnear, Snear] = NearestStateDistributions(x_new, T, P0, search_radius);        
+        
+        % Initialize best cost to currently known value
+        x_min   = xnearest;        
+        % compute cost for new vertex to nearest one            
+        T.costs = [T.costs; T.costs(find(T.NodeMeans == kron(ones(size(T.NodeMeans,1),1), xnearest),1)) + (xnearest - x_new)*P0*(xnearest - x_new)']; 
+        c_min   = T.costs(end);
+
+        T.NodeMeans{end+1}       = x_new; % add vertex to tree
+        T.NodeCovariances{end+1} = S_new; 
 
         % Iterate through all nearest neighbors to find alternate lower
         % cost paths and connect along the minimum cost path           
         collision_check_flag = 1;
-        for j=1:size(Xnear,1)  
+        for j=1:size(Xnear,2)  
             % Perform Distributionally Robust Collision Check
             path_check_param.alpha      = alpha;
-            path_check_param.cov_matrix = Snear(:,:,j);
+            path_check_param.cov_matrix = Snear{j};
             path_check_param.Obstacles  = Obstacles;
-            path_check_param.x          = Xnear(j,:)'; 
+            path_check_param.x          = Xnear{j}'; 
             collision_check_flag        = collision_check_flag*(~DRCheckCollision(path_check_param));
-            XNear_Cost = T.costs(find(T.NodeMeans == kron(ones(size(T.NodeMeans,1),1), Xnear(j,:)),1));
-            c_new      = XNear_Cost + (Xnear(j,:) - x_new)*P0*(Xnear(j,:) - x_new)';
+            XNear_Cost = T.costs(find(T.NodeMeans == kron(ones(size(T.NodeMeans,2),1), Xnear{j}),1));
+            c_new      = XNear_Cost + (Xnear{j} - x_new)*P0*(Xnear{j} - x_new)';
             if c_min > c_new && collision_check_flag
-                x_min = Xnear(j,:);                
+                x_min = Xnear{j};                
                 c_min = c_new;                    
             end
         end        
 
         T.edges{end+1} = [x_min' x_new'];
         line([x_min(1), x_new(1)], [x_min(2), x_new(2)], 'Color', 'g'); 
+        drawnow; hold on;
         T.costs(end) = c_min;           
 
         % rewire vertices in Xnear if improved cost and delete edges to maintain tree structure 
@@ -123,8 +125,8 @@ for k=1:num_nodes
         for j=1:length(Xnear)            
             path_check_param.alpha      = alpha;
             path_check_param.Obstacles  = Obstacles;
-            path_check_param.cov_matrix = Snear(:,:,j);
-            path_check_param.x          = Xnear(j,:)'; 
+            path_check_param.cov_matrix = Snear{j};
+            path_check_param.x          = Xnear{j}'; 
             collision_check_flag        = collision_check_flag*(~DRCheckCollision(path_check_param));
             
             if collision_check_flag && (T.costs(Xnear(j,:)) > c_min + (Xnear(j,:) - x_new)*P0*(Xnear(j,:) - x_new))

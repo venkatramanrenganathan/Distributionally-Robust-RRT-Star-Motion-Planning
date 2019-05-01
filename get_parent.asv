@@ -3,11 +3,11 @@ function parent_node = get_parent(node, T)
 % (u,v) belongs to the edge set.
 
     edges = T.edges;
-    nodes = T.NodeMeans;    
-    if node == nodes{1} % rootnode has no parent - It is its own parent
+    nodes = T.Nod
+    if node == T.NodeMeans(1,:) % rootnode has no parent - It is its own parent
         parent_node = node;        
     else
-        for i = 1:length(edges) 
+        for i = 1:length(edges(:,1)) 
             ith_edge  = edges{i};
             edge_from = ith_edge(:,1);
             edge_to   = ith_edge(:,2);               
