@@ -21,10 +21,10 @@ T.nodes        = x0;
 T.costs        = 0;
 
 %% Initialize Parameters of Tree
-num_nodes            = 600; %number of nodes
-T.NodeMeans          = x0;
-T.NodeCovariances{1} = S0; 
-P0                   = CostToGo(A, B, Q, QT, R, Th); % optimal unconstrained cost to go matrix (to origin)
+num_nodes         = 600; %number of nodes
+T.NodeMeans       = x0;
+T.NodeCovariances = S0; 
+P0                = CostToGo(A, B, Q, QT, R, Th); % optimal unconstrained cost to go matrix (to origin)
 
 %% visualize
 figure;
@@ -89,12 +89,11 @@ for k=1:num_nodes
         x_min   = xnearest;        
         c_min   = T.costs(end);
 
-        T.NodeMeans              = [T.NodeMeans; x_new]; % add vertex to tree
-        T.NodeCovariances{end+1} = S_new; 
+        T.NodeMeans       = [T.NodeMeans; x_new]; % add vertex to tree
+        T.NodeCovariances = [T.NodeCovariances; S_new]; 
 
         % Within a radius of r, find all nearest vertices in current tree
-        search_radius  = min(5*sqrt(log(length(nodes))/length(nodes)),radius);  
-        [Xnear, Snear] = NearestStateDistributions(x_new, T, P0, search_radius);        
+        [Xnear, Snear] = NearestStateDistributions(x_new, T, P0, radius);        
 
         % Iterate through all nearest neighbors to find alternate lower
         % cost paths and connect along the minimum cost path           
