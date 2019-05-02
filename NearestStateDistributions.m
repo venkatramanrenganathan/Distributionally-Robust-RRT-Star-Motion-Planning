@@ -6,18 +6,18 @@ function [V, Q] = NearestStateDistributions(x, T, P, r)
 %         T = current tree (struct with lists of node means, covariances, and edges)
 %         P = optimal cost to go matrix (to origin)
 %         r = search radius
-% Outputs: V = set of nearest vertices
-% Outputs: xnear = state of nearest vertex
-%          Snear = covariance matrix of nearest vertex
+% Outputs: V = Cell of nearest vertices
+%          Q = Cell of covariances of nearest vertices
 
 q = T.NodeMeans;
-n = size(q, 1);
-m = size(q, 2);
+n = length(q);
+V = {};
+Q = {};
 for i = 1:n
     distances(i) = (q{i} - x)*P*(q{i} - x)'; % distances = sqrt(sum((q - kron(ones(n,1), x)).^2, 2));
     if distances(i) < r
         V{end+1} = q{i};         
-        Q{end+1} = T.NodeCovariances{i}; % Q = [Q; T.NodeCovariances(1+m*(i-1):m*i,:)]; - Old implementation
+        Q{end+1} = T.NodeCovariances{i}; % Q = [Q; T.NodeCovariances(1+n*(i-1):n*i,:)]; - Old implementation
     end
 end
     
