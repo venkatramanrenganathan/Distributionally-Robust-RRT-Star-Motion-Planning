@@ -17,6 +17,7 @@ q_start.parent = 0;
 nodes(1)       = q_start;
 dx             = 0.1; % step size toward random sample
 T.nodes        = x0;
+T.edges        = {};   
 T.costs{1}     = 0;
 
 %% Initialize Parameters of Tree
