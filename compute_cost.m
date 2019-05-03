@@ -1,8 +1,7 @@
 function cost = compute_cost(node, T)
 % Cost(v) = Cost(Parent(v)) + c(Line(Parent(v), v)) - Implementation
 
-    cost        = 0; 
-    parent_node = [];
+    cost = 0;     
     while ~cost    
         parent_node = get_parent(node, T);
         if isempty(parent_node) || isequal(parent_node,node)

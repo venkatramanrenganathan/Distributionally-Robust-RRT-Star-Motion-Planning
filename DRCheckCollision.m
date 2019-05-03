@@ -13,12 +13,7 @@ alpha      = path_check_param.alpha;
 cov_matrix = path_check_param.cov_matrix;
 Obstacles  = path_check_param.Obstacles;
 x          = path_check_param.x;
-
-hits = 0;
-a_x  = [1 0 0 0]';    
-a_y  = [0 1 0 0]'; 
-x_v  = [0 0 1 0]';
-y_v  = [0 0 0 1]';
+hits       = 0;
 
 add_p = 0.05; % Should be 0
 
@@ -34,6 +29,6 @@ for i = 1:size(Obstacles,1) % check if sample hits an obstacle
        Obstacles(i,:)*x >= Obstacles(i,2) - y_tight && ...
        Obstacles(i,:)*x <= Obstacles(i,2) + Obstacles(i,4) + y_v_tight
         hits = hits + 1;
-        return
+        break;
     end 
 end
