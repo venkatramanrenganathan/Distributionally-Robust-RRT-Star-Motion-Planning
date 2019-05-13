@@ -28,14 +28,28 @@ class RRT():
         obstacleList:obstacle Positions [[x,y,size],...]
         randArea:Ramdom Samping Area [min,max]
         """
-        self.start = Node(start[0], start[1])
-        self.end = Node(goal[0], goal[1])
+        self.start = Node(start[0], start[1])  # Start Node Coordinates
+        self.end = Node(goal[0], goal[1])      # Goal Node Coordinates
         self.minrand = randArea[0]
         self.maxrand = randArea[1]
         self.expandDis = expandDis
         self.goalSampleRate = goalSampleRate
         self.maxIter = maxIter
-        self.obstacleList = obstacleList
+        self.obstacleList = obstacleList   
+        
+         # Double Integrator Data    
+        self.dt   = 0.1                                                       # Time Discretization Period 
+        self.A    = np.array([[1,0,dt,0],[0, 1, 0, dt],[0,0,1,0],[0,0,0,1]])  # Dynamics Matrix
+        self.B    = np.array([[(dt**2)/2, 0],[0, (dt**2)/2],[dt, 0],[0,dt]])  # Input Matrix
+        self.C    = np.array([[1,0,0,0],[0,1,0,0]])                           # Output Matrix
+        self.G    = B                                                         # Disturbance Input Matrix
+        self.Q    = np.array([[4*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])           # State Stage cost Penalty
+        self.QT   = np.array([[100*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])         # State Terminal Penalty
+        self.R    = 0.02*np.identity(2)                                                                              # Input Penalty 
+        self.W    = np.array([[np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.001*np.array([[2,1],[1,2]])]])  # Disturbance covariance
+        self.Th   = 1                                                                                                # Steering Time Horizon
+        self.S0   = np.array([[0.001*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), np.zeros((2,2))]])          # Initial State Covariance
+        
 
     def Planning(self, animation=True):
         """
@@ -235,8 +249,9 @@ class Node():
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.cost = 0.0
+        self.cost   = 0.0
         self.parent = None
+        self.covar  = np.zeros((4,4))
 
 
 def main():
@@ -253,8 +268,7 @@ def main():
     ]  # Obstacle Location Format [ox,oy,wd,ht]- ox, oy specifies the bottom left corner of rectangle with width: wd and height: ht.]
 
     # Set Initial parameters
-    rrt = RRT(start=[0, 0], goal=[7, 9],
-              randArea=[-2, 15], obstacleList=obstacleList)
+    rrt  = RRT(start=[0, 0], goal=[7, 9], randArea=[-2, 15], obstacleList=obstacleList)
     path = rrt.Planning(animation=show_animation)
 
     if path is None:
