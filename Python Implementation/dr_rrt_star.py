@@ -16,8 +16,9 @@ from numpy.linalg import inv
 
 # Global Variables
 show_animation = True  # Flag to decide to show animation or not
-STEER_TIME     = 10.0  # Maximum Steering Time Horizon
+STEER_TIME     = 10    # Maximum Steering Time Horizon
 DT             = 0.1   # Time tick(discretization time)
+P0             = 0.0   # Optimal Cost-To-Go Matrix - Will be updated below
 
 
 class RRT():
@@ -53,147 +54,114 @@ class RRT():
         Pathplanning
         animation: flag for animation on or off
         """
-
+        # Update the optimal Cost-To-Go Matrix Global Variable
+        P0 = self.CostToGo(self.init_param)  
+        self.init_param.append(P0)
+        # Add the start node to the nodeList
         self.nodeList = [self.start]
-        
-        for i in range(self.maxIter):            
+        for iter in range(self.maxIter):                               
+            # Get a random feasible point in the space
             rnd = self.get_random_point()
+            # Initialize that as a Node object
+            rnd = Node(rnd[0],rnd[1])
+            # Get the node that is nearest to the random sample obtained             
             nind = self.GetNearestListIndex(self.nodeList, rnd)
-
-            newNode = self.steer(rnd, nind, self.init_param)
-            #  print(newNode.cost)
-
-            if self.__CollisionCheck(newNode, self.obstacleList):
-                nearinds = self.find_near_nodes(newNode)
-                newNode = self.choose_parent(newNode, nearinds)
-                self.nodeList.append(newNode)
-                self.rewire(newNode, nearinds)
-
-            if animation and i % 10 == 0:
-                print ("Iteration No.", round(i/10))
-                self.DrawGraph(rnd)
-
+            nearestNode = self.nodeList[nind]   
+            # Try steering from nearestNode to the random sample
+            # Steer function returns a list of node points along the trajectory 
+            # from nearestNode to the random sample            
+            x_trajs = self.steer_LQG(nearestNode, rnd, self.init_param)
+            obstacleClashFlag = 0            
+            for x_traj in x_trajs:                
+                if not self.__CollisionCheck(x_traj, self.obstacleList):
+                    # Collision with obtacle happens
+                    obstacleClashFlag += 1                    
+                    break                
+            if not obstacleClashFlag:
+                nearinds     = self.find_near_nodes(x_traj)
+                minimum_cost = nearestNode.cost + self.ComputeDistance(nearestNode, x_traj)
+                x_traj       = self.choose_parent(x_traj, nearinds, minimum_cost)
+                self.nodeList.append(x_traj)
+                self.rewire(x_traj, nearinds)                 
+            if animation and iter % 10 == 0:
+                print ("Iteration No.", round(iter/10))                
+                self.DrawGraph(rnd, x_traj, 1) # Third Argument 1 is just a final flag
         # generate course
         lastIndex = self.get_best_last_index()
         if lastIndex is None:
             return None
         path = self.gen_final_course(lastIndex)
         return path
+    
+    def __CollisionCheck(self, node, obstacleList):
+        relax_param = 0.5 # need design this in a distributionally robust way
+        for (ox, oy, wd, ht) in obstacleList: # ox,oy,wd,ht - specifies the bottom left corner of rectangle with width: wd and height: ht.            
+            if node.x >= ox - relax_param and node.x <= ox + wd + relax_param and node.y >= oy - relax_param and node.y <= oy + ht + relax_param:
+                return False    # collision            
+            
+        return True  # safe
+    
+    def check_collision_extend(self, nearNode, theta, d):
+        # Function returns true if there is NO collision and false if there is collision
+        tmpNode = copy.deepcopy(nearNode)
+        for i in range(int(d / self.expandDis)):
+            tmpNode.x += self.expandDis * math.cos(theta)
+            tmpNode.y += self.expandDis * math.sin(theta)
+            if not self.__CollisionCheck(tmpNode, self.obstacleList):
+                return False # Collision
 
-    def choose_parent(self, newNode, nearinds):
+        return True # Safe
+    
+    def rewire(self, newNode, nearinds):
+        nnode = len(self.nodeList)
+        for i in nearinds:                       
+            # Steer from newNode to self.nodeList[i]
+            x_trajs_2 = self.steer_LQG(newNode, self.nodeList[i], self.init_param)            
+            collision_flag = 0
+            for x_traj_2 in x_trajs_2:                                            
+                theta = math.atan2(x_traj_2.y-self.nodeList[i].y, x_traj_2.x-self.nodeList[i].x)
+                d     = self.ComputeDistance(self.nodeList[i], x_traj_2)
+                if not self.check_collision_extend(self.nodeList[i], theta, d):
+                    # If there is collision, increment the collision flag and exit the loop
+                    collision_flag += 1
+                    break
+            if collision_flag == 0 and self.nodeList[i].cost > newNode.cost + self.ComputeDistance(newNode,self.nodeList[i]):   # Need to verify how to compute x_traj_2.cost                                        
+                self.nodeList[i].parent = nnode - 1
+                self.nodeList[i].cost   = newNode.cost + self.ComputeDistance(newNode,self.nodeList[i])
+    
+
+    def choose_parent(self, newNode, nearinds, minimum_cost):        
+        # If the queried node is a root node, return the same node
         if not nearinds:
             return newNode
-
         dlist = []
-        for i in nearinds:
-            dx = newNode.x - self.nodeList[i].x
-            dy = newNode.y - self.nodeList[i].y
-            d = math.sqrt(dx ** 2 + dy ** 2)
-            theta = math.atan2(dy, dx)
-            if self.check_collision_extend(self.nodeList[i], theta, d):
-                dlist.append(self.nodeList[i].cost + d)
-            else:
-                dlist.append(float("inf"))
-
+        for i in nearinds:            
+            # Try steering from newNode to self.nodeList[i]
+            x_trajs_1 = self.steer_LQG(newNode, self.nodeList[i], self.init_param)
+            collision_check_flag = 0
+            # Now check for collision along the trajectory
+            for x_traj_1 in x_trajs_1:
+                theta = math.atan2(x_traj_1.y-self.nodeList[i].y, x_traj_1.x-self.nodeList[i].x)
+                d     = self.ComputeDistance(self.nodeList[i], x_traj_1)
+                if not self.check_collision_extend(self.nodeList[i], theta, d):
+                    # If there is a collision, increment the collision check flag and exit
+                    collision_check_flag += 1 
+                    dlist.append(float("inf"))
+                    break                
+            # If no collision, that is safe then consider adding the cost of the newNode directly
+            if not collision_check_flag:
+                dlist.append(self.nodeList[i].cost + self.ComputeDistance(self.nodeList[i], newNode))                
         mincost = min(dlist)
         minind = nearinds[dlist.index(mincost)]
-
-        if mincost == float("inf"):
-            print("mincost is inf")
+        if mincost == float("inf"):            
             return newNode
-
         newNode.cost   = mincost
         newNode.parent = minind
 
-        return newNode
+        return newNode    
     
-    def LQGplanning(self, from_node, to_node, init_param):        
-    
-        # Linear system model
-        A = init_param[0]
-        B = init_param[1]
-        C = init_param[2]
-        Q = init_param[3]       
-        R = init_param[4]
-        W = init_param[5]
-        G = init_param[6]
-        QT = init_param[7]
-        
-        n,m = np.shape(B)
-        T   = STEER_TIME
-        rx, ry = [from_node.x], [from_node.y]
-        tonode = np.array([to_node.x, to_node.y,0,0])
-        x = np.array([from_node.x - to_node.x, from_node.y - to_node.y, 0 , 0]).reshape(n, 1)  # State vector
-        
-        # Run dynamic programming to compute optimal controller
-        K = np.zeros((m,n,T))
-        k = np.zeros((m,T))
-        P = np.zeros((n,n,T+1))
-        p = np.zeros((n,T+1)) 
-    
-        P[:,:,T+1] = QT
-        p[:,T+1]   = -np.dot(QT,tonode)
-
-        for t in range(T,0,-1):
-            P[:,:,t] = Q + A.T @ P[:,:,t+1]@ A - A.T @ P[:,:,t+1] @ B @ inv(R+B.T @ P[:,:,t+1] @ B) @ B.T @ P[:,:,t+1] @ A
-            K[:,:,t] = -inv(R+B.T @ P[:,:,t+1]@B) @ B.T @ P[:,:,t+1]@A
-            k[:,t]   = -inv(R+B.T@P[:,:,t+1]@B)@ B.T @ p[:,t+1]
-            p[:,t]   = A.T@p[:,t+1]- np.dot(Q,tonode) + K[:,:,t].T @ B.T @ p[:,t+1] + transpose(A) @ P[:,:,t+1] @ B @ k[:,t] + K[:,:,t].T @ (R+B.T@P[:,:,t+1]@B) @ k[:,t] 
-        
-        # Preallocate matrices
-        x          = np.zeros((n,T+1));
-        u          = np.zeros((m,T));
-        x[:,1]     = tonode;
-        V          = np.identity(n)
-        C          = np.identity(n)
-        H          = np.identity(n)
-        G          = np.identity(n)
-        P_x0       = np.zeros((n))
-        P_x_est_0  = np.zeros((n))
-        pi_0       = block_diag(P_x0, P_x_est_0) # Joint Covariance of true and estimated states
-        Sigma_V    = np.zeros((n,n,T))
-        S          = np.zeros((n,n,T+1))
-        x_est      = np.zeros((n,T+1))
-        x_est[:,1] = tonode                      # Estimated State
-        KG         = np.zeros(n,n,T+1)           # Kalman Gain
-        S[:,:,1]   = from_node.covar 
-        A_bar      = np.zeros((2*n,2*n,T))
-        pi         = np.zeros((2*n,2*n,T+1))
-        pi[:,:,1]  = pi_0
-        
-        # Steer the robot across the finite time horizon using LQG control
-        for t in range(1,T+1):
-            # Realize the measurement noise
-            Sigma_v      = 0.001*np.identity(n)
-            # control uses estimated state
-            u[:,t]       = K[:,:,t] @ x_est[:,t] + k[:,t] 
-            # Update the true state
-            x[:,t+1]     = A @ x[:,t] + B @ u[:,t]
-            # update the kalmann gain
-            KG[:,:,t]    = S[:,:,t] @ C.T @ inv(C @ S[:,:,t] @ C.T + H @ Sigma_V @ H.T)
-            # update the estimated state
-            x_est[:,t+1] = KG[:,:,t] @ C @ A @ x[:,t] + (np.identity(n) - KG[:,:,t]@C) @ A @ x_est[:,t] + B @ u[:,t]
-            # stack up the true and estimated states
-            A_bar[:,:,t] = np.array([[A, B @ K[:,:,t]], [KG[:,:,t]@C@A, (np.identity(n)-KG[:,:,t]@C)@A+B@K[:,:,t]]])
-            B_bar[:,:,t] = np.array([[B],[B]])
-            G_bar[:,:,t] = np.array([[G, np.zeros((n,n))], [KG[:,:,t]@C@G, KG[:,:,t]@H]])
-            # propagate the joint covariance
-            pi[:,:,t+1]  = A_bar[:,:,t]@pi[:,:,t]@A_bar[:,:,t].T + G_bar[:,:,t] @ block_diag(W, Sigma_V) @ G_bar[:,:,t].T
-            # Extract the true state covariance alone
-            S[:,:,t+1]   = np.array([np.identity(n), np.zeros((n,n))]) @ pi[:,:,t+1] @  np.array([np.identity(n), np.zeros((n,n))]).T 
-            
-        return x, S
-
-    def steer(self, rnd, nind, init_param):
-        
-        # expand tree
-        nearestNode = self.nodeList[nind]                
-        x, S = self.LQGplanning(nearestNode, rnd, init_param)
-        
-        return x, S
 
     def get_random_point(self):
-
         if random.randint(0, 100) > self.goalSampleRate:
             rnd = [random.uniform(self.minrand, self.maxrand),
                    random.uniform(self.minrand, self.maxrand)]
@@ -203,20 +171,13 @@ class RRT():
         return rnd
 
     def get_best_last_index(self):
-
-        disglist = [self.calc_dist_to_goal(
-            node.x, node.y) for node in self.nodeList]
+        disglist = [self.calc_dist_to_goal(node) for node in self.nodeList]
         goalinds = [disglist.index(i) for i in disglist if i <= self.expandDis]
-
         if not goalinds:
             return None
-
-        mincost = min([self.nodeList[i].cost for i in goalinds])
-        for i in goalinds:
-            if self.nodeList[i].cost == mincost:
-                return i
-
-        return None
+        costList = [self.nodeList[i].cost for i in goalinds]        
+        return costList.index(min(costList))
+        
 
     def gen_final_course(self, goalind):
         path = [[self.end.x, self.end.y]]
@@ -225,61 +186,46 @@ class RRT():
             path.append([node.x, node.y])
             goalind = node.parent
         path.append([self.start.x, self.start.y])
+        
         return path
 
-    def calc_dist_to_goal(self, x, y):
-        return np.linalg.norm([x - self.end.x, y - self.end.y])
+    def calc_dist_to_goal(self, node):
+        # Calculate the distance from a given node to the goal node
+        return self.ComputeDistance(node,self.end)         
 
     def find_near_nodes(self, newNode):
         nnode = len(self.nodeList)
         r = 50.0 * math.sqrt((math.log(nnode) / nnode))
         #  r = self.expandDis * 5.0
-        dlist = [(node.x - newNode.x) ** 2 +
-                 (node.y - newNode.y) ** 2 for node in self.nodeList]
+        dlist = [self.ComputeDistance(node, newNode) for node in self.nodeList]        
         nearinds = [dlist.index(i) for i in dlist if i <= r ** 2]
         return nearinds
 
-    def rewire(self, newNode, nearinds):
-        nnode = len(self.nodeList)
-        for i in nearinds:
-            nearNode = self.nodeList[i]
-
-            dx = newNode.x - nearNode.x
-            dy = newNode.y - nearNode.y
-            d  = math.sqrt(dx ** 2 + dy ** 2)
-
-            scost = newNode.cost + d
-
-            if nearNode.cost > scost:
-                theta = math.atan2(dy, dx)
-                if self.check_collision_extend(nearNode, theta, d):
-                    nearNode.parent = nnode - 1
-                    nearNode.cost = scost
-
-    def check_collision_extend(self, nearNode, theta, d):
-
-        tmpNode = copy.deepcopy(nearNode)
-
-        for i in range(int(d / self.expandDis)):
-            tmpNode.x += self.expandDis * math.cos(theta)
-            tmpNode.y += self.expandDis * math.sin(theta)
-            if not self.__CollisionCheck(tmpNode, self.obstacleList):
-                return False
-
-        return True
-
-    def DrawGraph(self, rnd=None):
+    def DrawGraph(self, rnd=None, ellNode=None,final_flag=None):
         """
         Draw Graph
         """
         plt.clf()
         if rnd is not None:
-            plt.plot(rnd[0], rnd[1], "^k")
+            plt.plot(rnd.x, rnd.y, "^k")
         for node in self.nodeList:
             if node.parent is not None:
                 plt.plot([node.x, self.nodeList[node.parent].x], [
                          node.y, self.nodeList[node.parent].y], "-g", alpha=0.2)
+        
+        # Plot the intersecting Ellipse        
+        if ellNode is not None and final_flag is not None:            
+            alfa     = math.atan2(ellNode.y,ellNode.x)
+            elcovar  = ellNode.covar
+            elE, elV = np.linalg.eig(elcovar[:2,:2])
+            ellObj = Ellipse(xy=[ellNode.x, ellNode.y], width=np.random.rand(), height=np.random.rand(), angle=alfa * 360)
+            plt.axes().add_artist(ellObj)
+            ellObj.set_clip_box(plt.axes().bbox)
+            ellObj.set_alpha(0.9)
+            ellObj.set_facecolor('g')  
+            
 
+        # Plot the rectangle obstacles
         rects = [Rectangle(xy=[ox, oy], width=wd, height=ht, angle=0, color="k", facecolor="k",) for (ox, oy, wd, ht) in self.obstacleList]
         for rect in rects:
                 plt.axes().add_artist(rect)
@@ -291,19 +237,130 @@ class RRT():
         plt.pause(0.01)
 
     def GetNearestListIndex(self, nodeList, rnd):
-        dlist = [(node.x - rnd[0]) ** 2 + (node.y - rnd[1])
-                 ** 2 for node in nodeList]
+        dlist = [self.ComputeDistance(node,rnd) for node in nodeList]        
         minind = dlist.index(min(dlist))
 
         return minind
 
-    def __CollisionCheck(self, node, obstacleList):
-        relax_param = 0.5 # need design this in a distributionally robust way
-        for (ox, oy, wd, ht) in obstacleList: # ox,oy,wd,ht - specifies the bottom left corner of rectangle with width: wd and height: ht.            
-            if node.x >= ox - relax_param and node.x <= ox + wd + relax_param and node.y >= oy - relax_param and node.y <= oy + ht + relax_param:
-                return False    # collision            
+    
+    
+    def CostToGo(self, init_param):
+        A = init_param[0]
+        B = init_param[1]        
+        Q = init_param[4]       
+        QT = init_param[5]
+        R = init_param[6]        
+        # Preallocate data structures
+        n,m       = np.shape(B)
+        P         = np.zeros((n,n,STEER_TIME+1))
+        P[:,:,-1] = QT        
+        # Compute Cost-To-Go Matrix
+        for t in range(STEER_TIME-1,0,-1):
+            P[:,:,t] = Q + A.T @ P[:,:,t+1]@ A - A.T @ P[:,:,t+1] @ B @ inv(R+B.T @ P[:,:,t+1] @ B) @ B.T @ P[:,:,t+1] @ A        
+        P0 = P[:,:,1]
+        
+        return P0
+    
+    def ComputeDistance(self, from_node, to_node):
+        diff_vec = np.array([from_node.x - to_node.x, from_node.y - to_node.y, from_node.xd - to_node.xd, from_node.yd - to_node.yd])
+        P0       = self.init_param[9]
+        distance = diff_vec @ P0 @ diff_vec.T
+        
+        return distance
+        
+    
+    def steer_LQG(self, from_node, to_node, init_param):        
+    
+        # Linear system model
+        A = init_param[0]
+        B = init_param[1]
+        C = init_param[2]
+        G = init_param[3]
+        Q = init_param[4]       
+        QT = init_param[5]
+        R = init_param[6]
+        W = init_param[7]     
+        
+        n,m = np.shape(B)
+        T   = STEER_TIME
+        fromnode = np.array([from_node.x, from_node.y, from_node.xd, from_node.yd])
+        tonode   = np.array([to_node.x, to_node.y,to_node.xd, to_node.yd]) 
+        x = np.array([from_node.x - to_node.x, from_node.y - to_node.y, 0 , 0])
+        x = x.reshape(n, 1)  # State vector
+        
+        # Run dynamic programming to compute optimal controller
+        K = np.zeros((m,n,T))
+        k = np.zeros((m,T))
+        P = np.zeros((n,n,T+1))
+        p = np.zeros((n,T+1)) 
+    
+        # Initiliaze terminal time matrices
+        P[:,:,-1] = QT
+        p[:,-1]   = -np.dot(QT,tonode)
+
+        for t in range(T-1,0,-1):
+            P[:,:,t] = Q + A.T @ P[:,:,t+1]@ A - A.T @ P[:,:,t+1] @ B @ inv(R+B.T @ P[:,:,t+1] @ B) @ B.T @ P[:,:,t+1] @ A
+            K[:,:,t] = -inv(R+B.T @ P[:,:,t+1]@B) @ B.T @ P[:,:,t+1]@A
+            k[:,t]   = -inv(R+B.T@P[:,:,t+1]@B)@ B.T @ p[:,t+1]
+            p[:,t]   = A.T @ p[:,t+1] - np.dot(Q,tonode) + K[:,:,t].T @ B.T @ p[:,t+1] + A.T @ P[:,:,t+1] @ B @ k[:,t] + K[:,:,t].T @ (R+B.T@P[:,:,t+1]@B) @ k[:,t] 
+        
+        # Preallocate matrices
+        x          = np.zeros((n,T+1));
+        u          = np.zeros((m,T));
+        x[:,1]     = fromnode;
+        V          = np.identity(n)
+        C          = np.identity(n)
+        H          = np.identity(n)
+        G          = np.identity(n)
+        P_x0       = np.zeros((n,n))
+        P_x_est_0  = np.zeros((n,n))
+        pi_0       = block_diag(P_x0, P_x_est_0) # Joint Covariance of true and estimated states
+        Sigma_V    = np.zeros((n,n,T))
+        S          = np.zeros((n,n,T+1))
+        x_est      = np.zeros((n,T+1))
+        x_est[:,1] = fromnode                      # Estimated State
+        KG         = np.zeros((n,n,T+1))           # Kalman Gain
+        S[:,:,1]   = from_node.covar 
+        A_bar      = np.zeros((2*n,2*n,T))
+        B_bar      = np.zeros((2*n,m,T))
+        G_bar      = np.zeros((2*n,2*n,T))
+        pi         = np.zeros((2*n,2*n,T+1))
+        pi[:,:,1]  = pi_0
+        x_trajs    = [Node(0,0) for i in range(T+1)]
+        
+        # Steer the robot across the finite time horizon using LQG control
+        for t in range(1,T):
+            # Realize the measurement noise
+            Sigma_v      = 0.001*np.identity(n)
+            # control uses estimated state
+            u[:,t]       = K[:,:,t] @ x_est[:,t] + k[:,t] 
+            # Update the true state
+            x[:,t+1]     = A @ x[:,t] + B @ u[:,t]
+            # update the kalmann gain
+            KG[:,:,t]    = S[:,:,t] @ C.T @ inv(C @ S[:,:,t] @ C.T + H @ Sigma_v @ H.T)
+            # update the estimated state
+            x_est[:,t+1] = KG[:,:,t] @ C @ A @ x[:,t] + (np.identity(n) - KG[:,:,t]@C) @ A @ x_est[:,t] + B @ u[:,t]
+            # stack up the true and estimated states
+            A_bar[:,:,t] = np.block([[A, B @ K[:,:,t]], [KG[:,:,t] @ C @ A, (np.identity(n)-KG[:,:,t] @ C) @ A + B @ K[:,:,t]]])
+            B_bar[:,:,t] = np.block([[B],[B]])
+            G_bar[:,:,t] = np.block([[G, np.zeros((n,n))], [KG[:,:,t] @ C @ G, KG[:,:,t] @ H]])
+            # propagate the joint covariance
+            pi[:,:,t+1]  = A_bar[:,:,t] @ pi[:,:,t] @ A_bar[:,:,t].T + G_bar[:,:,t] @ block_diag(W, Sigma_v) @ G_bar[:,:,t].T
+            # Extract the true state covariance alone
+            S[:,:,t+1]   = np.block([np.identity(n), np.zeros((n,n))]) @ pi[:,:,t+1] @  np.block([np.identity(n), np.zeros((n,n))]).T 
             
-        return True  # safe
+        # Update the trajectory object at time step t+1
+        k = 0
+        for x_traj in x_trajs:                           
+            x_traj.x  = x[0,k]
+            x_traj.y  = x[1,k]
+            x_traj.xd = x[2,k]
+            x_traj.yd = x[3,k]
+            x_traj.covar = S[:,:,k]
+            x_traj.cost  = from_node.cost + math.sqrt((from_node.x - x_traj.x) ** 2 + (from_node.y - x_traj.y) ** 2)
+            k            = k + 1
+            
+        return x_trajs    
 
 
 class Node():
@@ -312,11 +369,13 @@ class Node():
     """
 
     def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.covar  = np.zeros((4,4))
-        self.cost   = 0.0
-        self.parent = None
+        self.x = x     # x position
+        self.y = y     # y position
+        self.xd = 0.0  # x velocity
+        self.yd = 0.0  # y velocity
+        self.covar  = np.zeros((4,4)) # covariance
+        self.cost   = 0.0  # cost 
+        self.parent = None # index of the parent node
         
 
 
@@ -328,12 +387,12 @@ def main():
     B  = np.array([[(DT**2)/2, 0],[0, (DT**2)/2],[DT, 0],[0,DT]])  # Input Matrix
     C  = np.array([[1,0,0,0],[0,1,0,0]])                           # Output Matrix
     G  = B                                                         # Disturbance Input Matrix
-    Q  = np.array([[4*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])           # State Stage cost Penalty
-    QT = np.array([[100*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])         # State Terminal Penalty
+    Q  = np.block([[4*np.identity(2), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])            # State Stage cost Penalty
+    QT = np.block([[100*np.identity(2), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])          # State Terminal Penalty    
     R  = 0.02*np.identity(2)                                                                              # Input Penalty 
-    W  = np.array([[np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.001*np.array([[2,1],[1,2]])]])  # Disturbance covariance    
-    S0 = np.array([[0.001*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), np.zeros((2,2))]])          # Initial State Covariance
-    init_param = [A,B,C,G,Q,QT,R,W,S0]
+    W  = np.block([[np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.001*np.array([[2,1],[1,2]])]])  # Disturbance covariance    
+    S0 = np.block([[0.001*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), np.zeros((2,2))]])          # Initial State Covariance    
+    init_param = [A,B,C,G,Q,QT,R,W,S0]    
 
     # ====Search Path with RRT====
     obstacleList = [
@@ -353,7 +412,6 @@ def main():
         print("Cannot find path!!")
     else:
         print("found path!!")
-
         # Draw final path
         if show_animation:
             rrt.DrawGraph()
