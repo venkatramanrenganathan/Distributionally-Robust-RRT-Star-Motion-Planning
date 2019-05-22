@@ -59,11 +59,10 @@ class RRT():
         self.init_param.append(P0)
         # Add the start node to the nodeList
         self.nodeList = [self.start]
-        for iter in range(self.maxIter):                               
-            # Get a random feasible point in the space
+        for iter in range(self.maxIter): 
+            print(iter)                              
+            # Get a random feasible point in the space as a node object
             rnd = self.get_random_point()
-            # Initialize that as a Node object
-            rnd = Node(rnd[0],rnd[1])
             # Get the node that is nearest to the random sample obtained             
             nind = self.GetNearestListIndex(self.nodeList, rnd)
             nearestNode = self.nodeList[nind]   
@@ -75,17 +74,18 @@ class RRT():
             for x_traj in x_trajs:                
                 if not self.__CollisionCheck(x_traj, self.obstacleList):
                     # Collision with obtacle happens
-                    obstacleClashFlag += 1                    
+                    obstacleClashFlag += 1  
+                    self.nodeList.append(x_traj) # Newly added
+                    # 3rd Argument 1 is just a final flag, 4th Argument 1 means it is a collision trajectory
+                    self.DrawGraph(rnd, x_traj, 1, clashFlag=1) 
                     break                
-            if not obstacleClashFlag:
-                nearinds     = self.find_near_nodes(x_traj)
-                minimum_cost = nearestNode.cost + self.ComputeDistance(nearestNode, x_traj)
-                x_traj       = self.choose_parent(x_traj, nearinds, minimum_cost)
-                self.nodeList.append(x_traj)
-                self.rewire(x_traj, nearinds)                 
-            if animation and iter % 10 == 0:
-                print ("Iteration No.", round(iter/10))                
-                self.DrawGraph(rnd, x_traj, 1) # Third Argument 1 is just a final flag
+                if not obstacleClashFlag:
+                    nearinds     = self.find_near_nodes(x_traj)                    
+                    x_traj       = self.choose_parent(x_traj, nearinds)
+                    self.nodeList.append(x_traj)
+                    self.rewire(x_traj, nearinds)    
+                    # Third Argument 1 is just a final flag, , 4th Argument 0 means it is a collision-free trajectory                                                 
+                    self.DrawGraph(rnd, x_traj, 1, clashFlag=0)
         # generate course
         lastIndex = self.get_best_last_index()
         if lastIndex is None:
@@ -126,11 +126,12 @@ class RRT():
                     collision_flag += 1
                     break
             if collision_flag == 0 and self.nodeList[i].cost > newNode.cost + self.ComputeDistance(newNode,self.nodeList[i]):   # Need to verify how to compute x_traj_2.cost                                        
+                # Proceed only if collision free and if the cost is improved
                 self.nodeList[i].parent = nnode - 1
                 self.nodeList[i].cost   = newNode.cost + self.ComputeDistance(newNode,self.nodeList[i])
     
 
-    def choose_parent(self, newNode, nearinds, minimum_cost):        
+    def choose_parent(self, newNode, nearinds):        
         # If the queried node is a root node, return the same node
         if not nearinds:
             return newNode
@@ -162,11 +163,11 @@ class RRT():
     
 
     def get_random_point(self):
-        if random.randint(0, 100) > self.goalSampleRate:
-            rnd = [random.uniform(self.minrand, self.maxrand),
-                   random.uniform(self.minrand, self.maxrand)]
-        else:  # goal point sampling
-            rnd = [self.end.x, self.end.y]
+        # Get a random point in search space and initialize that as a Node object
+        rnd = Node(random.uniform(self.minrand, self.maxrand),random.uniform(self.minrand, self.maxrand))
+        if not random.randint(0, 100) > self.goalSampleRate or not self.__CollisionCheck(rnd, self.obstacleList):            
+            # goal point sampling
+            rnd = Node(self.end.x, self.end.y)
 
         return rnd
 
@@ -201,40 +202,50 @@ class RRT():
         nearinds = [dlist.index(i) for i in dlist if i <= r ** 2]
         return nearinds
 
-    def DrawGraph(self, rnd=None, ellNode=None,final_flag=None):
+    def DrawGraph(self, rnd=None, ellNode=None,final_flag=None,clashFlag=None):
         """
         Draw Graph
         """
-        plt.clf()
         if rnd is not None:
-            plt.plot(rnd.x, rnd.y, "^k")
-        for node in self.nodeList:
-            if node.parent is not None:
-                plt.plot([node.x, self.nodeList[node.parent].x], [
-                         node.y, self.nodeList[node.parent].y], "-g", alpha=0.2)
+            rx, = plt.plot(rnd.x, rnd.y, "^k")
+        
+        if clashFlag == 0: # Safe Trajectory
+            for node in self.nodeList:
+                if node.parent is not None:   
+                    plt.plot([node.x, self.nodeList[node.parent].x], 
+                             [node.y, self.nodeList[node.parent].y], "-g", alpha=0.8)                                
+        elif clashFlag == 1: # Danger Trajectory
+            for node in self.nodeList:
+                if node.parent is not None:   # Safe Trajectory
+                    plt.plot([node.x, self.nodeList[node.parent].x], 
+                             [node.y, self.nodeList[node.parent].y], "-r", alpha=0.8)
         
         # Plot the intersecting Ellipse        
         if ellNode is not None and final_flag is not None:            
             alfa     = math.atan2(ellNode.y,ellNode.x)
             elcovar  = ellNode.covar
+            print(elcovar[:2,:2])
             elE, elV = np.linalg.eig(elcovar[:2,:2])
-            ellObj = Ellipse(xy=[ellNode.x, ellNode.y], width=np.random.rand(), height=np.random.rand(), angle=alfa * 360)
+            ellObj   = Ellipse(xy=[ellNode.x, ellNode.y], width=math.sqrt(elE[0]), height=math.sqrt(elE[1]), angle=alfa * 360)
             plt.axes().add_artist(ellObj)
             ellObj.set_clip_box(plt.axes().bbox)
             ellObj.set_alpha(0.9)
-            ellObj.set_facecolor('g')  
-            
+            if clashFlag == 0:   # No Collision - Green Safe Trajectory Ellipses                
+                ellObj.set_facecolor('g')
+            elif clashFlag == 1: # Collision - Red Danger Trajectory Ellipses
+                ellObj.set_facecolor('r')
 
         # Plot the rectangle obstacles
         rects = [Rectangle(xy=[ox, oy], width=wd, height=ht, angle=0, color="k", facecolor="k",) for (ox, oy, wd, ht) in self.obstacleList]
         for rect in rects:
-                plt.axes().add_artist(rect)
+            plt.axes().add_artist(rect)
         
         plt.plot(self.start.x, self.start.y, "xr")
         plt.plot(self.end.x, self.end.y, "xr")
-        plt.axis([-2, 15, -2, 15])
-        plt.grid(True)
+        plt.axis([-5, 20, -5, 20])
+        plt.grid(True)        
         plt.pause(0.01)
+        rx.remove()
 
     def GetNearestListIndex(self, nodeList, rnd):
         dlist = [self.ComputeDistance(node,rnd) for node in nodeList]        
@@ -405,7 +416,7 @@ def main():
     ]  # Obstacle Location Format [ox,oy,wd,ht]- ox, oy specifies the bottom left corner of rectangle with width: wd and height: ht.]
 
     # Set Initial parameters
-    rrt  = RRT(start=[0, 0], goal=[7, 9], randArea=[-2, 15], obstacleList=obstacleList, init_param=init_param)
+    rrt  = RRT(start=[0, 0], goal=[7, 9], randArea=[-5, 20], obstacleList=obstacleList, init_param=init_param)
     path = rrt.Planning(animation=show_animation)
 
     if path is None:
