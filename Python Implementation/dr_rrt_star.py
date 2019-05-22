@@ -12,6 +12,7 @@ from matplotlib.patches import Ellipse
 from matplotlib.patches import Rectangle
 from scipy.linalg import block_diag
 from numpy.linalg import inv
+from numpy import linalg as LA
 
 
 # Global Variables
@@ -44,6 +45,7 @@ class RRT():
         self.maxIter        = maxIter
         self.obstacleList   = obstacleList 
         self.start.covar    = init_param[8]
+        self.alfa           = [0.01 + (0.05-0.01)*random.random() for i in range(len(obstacleList))]
         
         # Double Integrator Data    
         self.init_param   = init_param       
@@ -94,12 +96,14 @@ class RRT():
         return path
     
     def __CollisionCheck(self, node, obstacleList):
-        relax_param = 0.5 # need design this in a distributionally robust way
-        for (ox, oy, wd, ht) in obstacleList: # ox,oy,wd,ht - specifies the bottom left corner of rectangle with width: wd and height: ht.            
-            if node.x >= ox - relax_param and node.x <= ox + wd + relax_param and node.y >= oy - relax_param and node.y <= oy + ht + relax_param:
+        for alfa, (ox, oy, wd, ht) in zip(self.alfa, obstacleList):
+            obs   = np.array([ox, oy, wd, ht]).T
+            relax = math.sqrt((1-alfa)/alfa)*LA.norm(node.covar@obs) + 0.01
+            if node.x >= ox - relax and node.x <= ox + wd + relax and node.y >= oy - relax and node.y <= oy + ht + relax:
                 return False    # collision            
-            
+        
         return True  # safe
+        
     
     def check_collision_extend(self, nearNode, theta, d):
         # Function returns true if there is NO collision and false if there is collision
@@ -223,10 +227,12 @@ class RRT():
         # Plot the intersecting Ellipse        
         if ellNode is not None and final_flag is not None:            
             alfa     = math.atan2(ellNode.y,ellNode.x)
-            elcovar  = ellNode.covar
-            print(elcovar[:2,:2])
+            elcovar  = ellNode.covar            
             elE, elV = np.linalg.eig(elcovar[:2,:2])
-            ellObj   = Ellipse(xy=[ellNode.x, ellNode.y], width=math.sqrt(elE[0]), height=math.sqrt(elE[1]), angle=alfa * 360)
+            ellObj   = Ellipse(xy = [ellNode.x, ellNode.y], 
+                               width  = math.sqrt(elE[0]), 
+                               height = math.sqrt(elE[1]), 
+                               angle  = alfa * 360)
             plt.axes().add_artist(ellObj)
             ellObj.set_clip_box(plt.axes().bbox)
             ellObj.set_alpha(0.9)
