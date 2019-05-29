@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue May 28 11:54:36 2019
+
+@author: vxr131730
+"""
+
 """
 Path Planning Sample Code with Distributionally Robust RRT*
 author: Venkatraman Renganathan
@@ -21,10 +28,23 @@ STEER_TIME     = 10    # Maximum Steering Time Horizon
 DT             = 0.1   # Time tick(discretization time)
 P0             = 0.0   # Optimal Cost-To-Go Matrix - Will be updated below
 
-
-class RRT():
+class Node():
     """
-    Class for RRT Planning
+    RRT* Node
+    """
+    def __init__(self, x, y):
+        self.x = x         # x position
+        self.y = y         # y position
+        self.xd = 0.0      # x velocity
+        self.yd = 0.0      # y velocity
+        self.means  = np.zeros((STEER_TIME, 2, 1)) # sequence of means
+        self.covar  = np.zeros((STEER_TIME, 4, 4)) # sequence of covariances
+        self.cost   = 0.0  # cost 
+        self.parent = None # index of the parent node       
+
+class RRTStar():
+    """
+    Class for RRT* Planning
     """
 
     def __init__(self, start, goal, obstacleList, init_param, randArea,
@@ -36,20 +56,18 @@ class RRT():
         obstacleList:obstacle Positions [[x,y,size],...]
         randArea:Ramdom Samping Area [min,max]
         """
-        self.start          = Node(start[0], start[1])  # Start Node Coordinates
-        self.end            = Node(goal[0], goal[1])      # Goal Node Coordinates
-        self.minrand        = randArea[0]
-        self.maxrand        = randArea[1]
-        self.expandDis      = expandDis
-        self.goalSampleRate = goalSampleRate
-        self.maxIter        = maxIter
-        self.obstacleList   = obstacleList 
-        self.start.covar    = init_param[8]
-        self.alfa           = [0.01 + (0.05-0.01)*random.random() for i in range(len(obstacleList))]
-        
-        # Double Integrator Data    
-        self.init_param   = init_param       
-        
+        self.start               = Node(start[0], start[1]) # Start Node Coordinates
+        self.end                 = Node(goal[0], goal[1])   # Goal Node Coordinates
+        self.minrand             = randArea[0]
+        self.maxrand             = randArea[1]
+        self.expandDis           = expandDis
+        self.goalSampleRate      = goalSampleRate
+        self.maxIter             = maxIter
+        self.obstacleList        = obstacleList 
+        self.start.covar[0,:,:]  = init_param[8]
+        self.alfa                = [0.01 + (0.05-0.01)*random.random() for i in range(len(obstacleList))]        
+        # Add the Double Integrator Data    
+        self.init_param = init_param               
 
     def Planning(self, animation=True):        
         # Update the optimal Cost-To-Go Matrix Global Variable
@@ -62,23 +80,23 @@ class RRT():
             # Get a random feasible point in the space as a node object
             rnd = self.get_random_point()
             # Get the node that is nearest to the random sample obtained             
-            nind = self.GetNearestListIndex(self.nodeList, rnd)
+            nind        = self.GetNearestListIndex(self.nodeList, rnd)
             nearestNode = self.nodeList[nind]   
-            # Try steering from nearestNode to the random sample using steer function which returns a list of node points
-            x_trajs = self.steer_LQG(nearestNode, rnd, self.init_param)
-            obstacleClashFlag = 0            
-            for x_traj in x_trajs:                
-                if not self.__CollisionCheck(x_traj, self.obstacleList):
-                    # Collision with obtacle happens
-                    obstacleClashFlag += 1  
+            # Try steering from nearestNode to the random sample using steer function
+            # Steer function returns a list of node points along the trajectory
+            x_trajs     = self.steer_LQG(nearestNode, rnd, self.init_param)                        
+            for x_traj in x_trajs:  
+                obstacleClashFlag = self.DRCollisionCheck(x_traj, self.obstacleList)
+                if not obstacleClashFlag:
+                    # Collision with obtacle happens - Add the node to the tree, update the figure and break                    
                     self.nodeList.append(x_traj) # Newly added
                     # 3rd Argument 1 is just a final flag, 4th Argument 1 means it is a collision trajectory
                     self.DrawGraph(rnd, x_traj, final_flag=1, clashFlag=1) 
                     break                
-            if not obstacleClashFlag:
-                # Safe Trajectory with no collision
+            if obstacleClashFlag:
+                # Safe Trajectory with no collision                
                 nearinds = self.find_near_nodes(x_traj)                    
-                rnd   = self.choose_parent(x_traj, nearinds)
+                rnd      = self.choose_parent(x_traj, nearinds)
                 self.nodeList.append(x_traj)
                 self.rewire(x_traj, nearinds)    
                 # Third Argument 1 is just a final flag, , 4th Argument 0 means it is a collision-free trajectory                                                 
@@ -90,7 +108,7 @@ class RRT():
         path = self.gen_final_course(lastIndex)
         return path
     
-    def __CollisionCheck(self, node, obstacleList):
+    def DRCollisionCheck(self, node, obstacleList):
         for alfa, (ox, oy, wd, ht) in zip(self.alfa, obstacleList):            
             relax   = 0.05
             xrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(node.covar @ np.array([1,0,0,0]).T) + relax
@@ -108,7 +126,7 @@ class RRT():
         for i in range(int(d / self.expandDis)):
             tmpNode.x += self.expandDis * math.cos(theta)
             tmpNode.y += self.expandDis * math.sin(theta)
-            if not self.__CollisionCheck(tmpNode, self.obstacleList):
+            if not self.DRCollisionCheck(tmpNode, self.obstacleList):
                 return False # Collision
         return True # Safe
     
@@ -163,9 +181,8 @@ class RRT():
 
     def get_random_point(self):
         # Get a random point in search space and initialize that as a Node object
-        rnd       = Node(random.uniform(self.minrand, self.maxrand),random.uniform(self.minrand, self.maxrand))
-        rnd.covar = np.zeros((4,4))
-        if not random.randint(0, 100) > self.goalSampleRate or not self.__CollisionCheck(rnd, self.obstacleList):            
+        rnd = Node(random.uniform(self.minrand, self.maxrand),random.uniform(self.minrand, self.maxrand))        
+        if not random.randint(0, 100) > self.goalSampleRate or not self.DRCollisionCheck(rnd, self.obstacleList):            
             # goal point sampling
             rnd = Node(self.end.x, self.end.y)
         return rnd         
@@ -181,15 +198,14 @@ class RRT():
     def steer_LQG(self, from_node, to_node, init_param):        
     
         # Linear system model
-        A = init_param[0]
-        B = init_param[1]
-        C = init_param[2]
-        G = init_param[3]
-        Q = init_param[4]       
-        QT = init_param[5]
-        R = init_param[6]
-        W = init_param[7]     
-        
+        A   = init_param[0]
+        B   = init_param[1]
+        C   = init_param[2]
+        G   = init_param[3]
+        Q   = init_param[4]       
+        QT  = init_param[5]
+        R   = init_param[6]
+        W   = init_param[7]             
         n,m = np.shape(B)
         T   = STEER_TIME
         fromnode = np.array([from_node.x, from_node.y, from_node.xd, from_node.yd])
@@ -265,7 +281,9 @@ class RRT():
             x_traj.y  = x[1,k]
             x_traj.xd = x[2,k]
             x_traj.yd = x[3,k]
-            x_traj.covar.append(S[:,:,k])
+            x_traj.means[k,0,0] = x[0,k]
+            x_traj.means[k,1,0] = x[1,k]
+            x_traj.covar[k,:,:] = S[:,:,k]
             x_traj.cost  = from_node.cost + math.sqrt((from_node.x - x_traj.x) ** 2 + (from_node.y - x_traj.y) ** 2)
             k            = k + 1            
         return x_trajs    
@@ -338,7 +356,7 @@ class RRT():
         if ellNode is not None and final_flag is not None:            
             alfa     = math.atan2(ellNode.y,ellNode.x)
             elcovar  = np.asarray(ellNode.covar)            
-            elE, elV = np.linalg.eig(elcovar[:2,:2])
+            elE, elV = np.linalg.eig(elcovar[0:2,0:2])
             ellObj   = Ellipse(xy = [ellNode.x, ellNode.y], 
                                width  = math.sqrt(elE[0]), 
                                height = math.sqrt(elE[1]), 
@@ -364,18 +382,6 @@ class RRT():
         rx.remove()
 
 
-class Node():
-    def __init__(self, x, y):
-        self.x = x     # x position
-        self.y = y     # y position
-        self.xd = 0.0  # x velocity
-        self.yd = 0.0  # y velocity
-        self.covar  = [] # covariance
-        self.cost   = 0.0  # cost 
-        self.parent = None # index of the parent node
-        
-
-
 def main():
     print("Start " + __file__)
     
@@ -388,7 +394,7 @@ def main():
     QT = np.block([[100*np.identity(2), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])          # State Terminal Penalty    
     R  = 0.02*np.identity(2)                                                                              # Input Penalty 
     W  = np.block([[np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.001*np.array([[2,1],[1,2]])]])  # Disturbance covariance    
-    S0 = np.block([[0.001*np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), np.zeros((2,2))]])          # Initial State Covariance    
+    S0 = np.block([[0.001*np.identity(2), np.zeros((2,2))],[np.zeros((2,2)), np.zeros((2,2))]])          # Initial State Covariance    
     init_param = [A,B,C,G,Q,QT,R,W,S0]    
 
     # ====Search Path with RRT====
@@ -402,7 +408,7 @@ def main():
     ]  # Obstacle Location Format [ox,oy,wd,ht]- ox, oy specifies the bottom left corner of rectangle with width: wd and height: ht.]
 
     # Set Initial parameters
-    rrt  = RRT(start=[0, 0], goal=[7, 9], randArea=[-5, 20], obstacleList=obstacleList, init_param=init_param)
+    rrt  = RRTStar(start=[0, 0], goal=[7, 9], randArea=[-5, 20], obstacleList=obstacleList, init_param=init_param)
     path = rrt.Planning(animation=show_animation)
 
     if path is None:
