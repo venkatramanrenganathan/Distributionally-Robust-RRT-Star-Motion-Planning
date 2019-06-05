@@ -179,10 +179,10 @@ class DR_RRTStar():
             
             # Get the DR-RRT* Tree node that is nearest to the random node          
             nearestIndex = self.GetNearestListIndex(randNode)
-            nearestNode  = self.nodeList[nearestIndex] 
+            nearestDRNode  = self.nodeList[nearestIndex] 
             
             # Get the last sequence data of nearestNode DR-RRT* Tree Node as a trajNode object
-            nearestNode = self.GetLastSequenceNode(nearestNode)
+            nearestNode = self.GetLastSequenceNode(nearestDRNode)
             
             # Try steering from nearestNode to the random sample using steer function
             # Steer function returns a list of node points along the trajectory 
@@ -200,7 +200,9 @@ class DR_RRTStar():
                 if not collisionFreeFlag:
                     # Collision with obtacle happens - Add the node to the tree, update the figure and break  
                     # Create a Node with trajectory sequence data upto the collision instant
-                    clashNode = self.PrepareNode(randNode, x_trajs, k)                
+                    clashNode = self.PrepareNode(randNode, x_trajs, k-1) 
+                    # Third Argument 1 means it is a collision-free trajectory, 0 means it is a collision trajectory                                                 
+                    self.DrawGraph(randNode, clashNode, freeFlag=collisionFreeFlag)  
                     self.nodeList.append(clashNode)                    
                     break                
             if collisionFreeFlag:
@@ -211,13 +213,13 @@ class DR_RRTStar():
                 # Get all the nodes in the Dr-RRT* Tree that are closer to the randomNode within a specified search radius
                 nearinds = self.FindNearNodes(randNode)                    
                 # Choose the minimum cost path to connect the random node
-                minNode  = self.ChooseParent(nearinds, nearestNode, randNode, minNode)
+                minNode  = self.ChooseParent(nearinds, nearestDRNode, randNode, minNode)
                 # Add the minNode to the DR-RRT* Tree
                 self.nodeList.append(minNode)
                 # Rewire the tree with newly added minNode
                 self.ReWire(nearinds, minNode)    
-            # Third Argument 1 means it is a collision-free trajectory, 0 means it is a collision trajectory                                                 
-            self.DrawGraph(randNode, x_traj, freeFlag=collisionFreeFlag)        
+                # Third Argument 1 means it is a collision-free trajectory, 0 means it is a collision trajectory                                                 
+                self.DrawGraph(randNode, minNode, freeFlag=collisionFreeFlag)        
     
     ###########################################################################
     
@@ -228,7 +230,7 @@ class DR_RRTStar():
         node         : Node containing position data which has to be checked for collision         
         """
         for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList):            
-            relax   = 0.05
+            relax   = 0.5
             xrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(trajNode.Sigma @ np.array([1,0,0,0]).T) + relax
             yrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(trajNode.Sigma @ np.array([0,1,0,0]).T) + relax
             xdrelax = math.sqrt((1-alfa)/alfa)*LA.norm(trajNode.Sigma @ np.array([0,0,1,0]).T) + relax
@@ -288,7 +290,7 @@ class DR_RRTStar():
     
     ###########################################################################
     
-    def GetAncestors(childNode):
+    def GetAncestors(self, childNode):
         """
         Returns the complete list of ancestors for a given child Node
         """
@@ -305,24 +307,24 @@ class DR_RRTStar():
     
     ###########################################################################
     
-    def ReWire(self, nearinds, minNode):
+    def ReWire(self, nearIndices, minNode):
         """
         Rewires the DR-RRT* Tree using Minimum cost path found
         Input Parameters:        
-        nearinds : Indices of the nodes that are nearest to the randomNode
+        nearIndices : Indices of the nodes that are nearest to the randomNode
         minNode  : Node with minimum cost paths
         """
-        nnode = len(self.nodeList)
-        meanSequences  = np.zeros((nearinds, STEER_TIME+1, 4, 1))
-        covarSequences = np.zeros((nearinds, STEER_TIME+1, 4, 4))
+        totalNodes = len(self.nodeList)
+        meanSequences  = np.zeros((len(nearIndices), STEER_TIME+1, 4, 1))
+        covarSequences = np.zeros((len(nearIndices), STEER_TIME+1, 4, 4))
         # Get all ancestors of minNode
         minNodeAncestors = self.GetAncestors(minNode)
-        for i in nearinds:                       
+        for j, nearIndex in enumerate(nearIndices):                       
             # Avoid looping all ancestors of minNode            
-            if np.any([self.nodeList[i] == minNodeAncestor for minNodeAncestor in minNodeAncestors]):
+            if np.any([self.nodeList[nearIndex] == minNodeAncestor for minNodeAncestor in minNodeAncestors]):
                 continue            
             # Get the last sequence data as trajNode object
-            nearNode    = self.GetLastSequenceNode(self.nodeList[i])
+            nearNode    = self.GetLastSequenceNode(self.nodeList[nearIndex])
             minLastNode = self.GetLastSequenceNode(minNode)
             # Steer from minLastNode to nearNode
             x_trajs = self.SteerUsingLQGControl(minLastNode, nearNode)                        
@@ -331,51 +333,49 @@ class DR_RRTStar():
                 if k == 0:
                     continue   
                 # Update the meanSequences and covarSequences
-                meanSequences[i,k,:,:]  = x_traj.X
-                covarSequences[i,k,:,:] = x_traj.Sigma
-                # Check for DR collision                                        
-                theta    = math.atan2(x_traj.y-self.nodeList[i].y, x_traj.x-self.nodeList[i].x)
-                distance = self.ComputeDistance(self.nodeList[i], x_traj)
-                collisionFreeFlag = self.CheckCollisionExtend(self.nodeList[i], theta, distance)
+                meanSequences[j,k,:,:]  = x_traj.X
+                covarSequences[j,k,:,:] = x_traj.Sigma
+                # Check for DR collision                         
+                theta    = math.atan2(x_traj.X[1] - nearNode.X[1], x_traj.X[0] - nearNode.X[0])
+                distance = self.ComputeDistance(nearNode, x_traj)
+                collisionFreeFlag = self.CheckCollisionExtend(nearNode, theta, distance)
                 if not collisionFreeFlag: # If there is collision, exit the loop 
-                    break
-            # If trajectory is not probabislistically feasible, continue to check for next nearby DR-RRT* tree node
-            if not collisionFreeFlag:
-                continue
+                    break            
             if collisionFreeFlag:
-                self.nodeList[i] = self.ComputeCost(self.nodeList[i])
-                minNode          = self.ComputeCost(minNode)
-                if self.nodeList[i].cost > minNode.cost + DT*(STEER_TIME+1)*CT:                                                                                
-                    # Prepare newNode with means,covar sequences                    
-                    newNode        = self.nodeList[i]
-                    newNode.means  = meanSequences[i,:,:,:]
-                    newNode.covar  = covarSequences[i,:,:,:]
-                    newNode.parent = nnode - 1
+                self.nodeList[nearIndex] = self.ComputeCost(self.nodeList[nearIndex])
+                #minNode                  = self.ComputeCost(minNode)
+                if self.nodeList[nearIndex].cost > minNode.cost + DT*(STEER_TIME+1)*CT:                                                                                
+                    # Prepare newNode with means,covar sequences
+                    minNodeIndex   = self.nodeList.index(minNode)                  
+                    newNode        = self.nodeList[nearIndex]
+                    newNode.means  = meanSequences[j,:,:,:]
+                    newNode.covar  = covarSequences[j,:,:,:]
+                    newNode.parent = totalNodes - 1 # should be index of minNode
                     newNode.cost   = minNode.cost + DT*(STEER_TIME+1)*CT
                     # Delete nearNode from DR-RRT* Tree
-                    self.nodeList.pop(i)
+                    self.nodeList.pop(nearIndex)
                     # Add newNode with means,covar sequences to the DR-RRT* tree
                     self.nodeList.append(newNode)
 
     ###########################################################################
     
-    def ChooseParent(self, nearinds, nearestNode, randNode, minNode):
+    def ChooseParent(self, nearIndices, nearestNode, randNode, minNode):
         """
         Chooses the minimum cost path by selecting the correct parent
         Input Parameters:        
-        nearinds    : Indices of the nodes that are nearest to the randNode
-        nearestNode : Node that is nearest to the sampled random node
+        nearIndices : Indices of the nodes that are nearest to the randNode
+        nearestNode : DR-RRT* Node that is nearest to the sampled random node
         randNode    : Randomly sampled node
         minNode     : Node with minimum cost as of now
         """
         # If the queried node is a root node, return the same node
-        if not nearinds:
+        if not nearIndices:
             return minNode
         costList       = []
-        meanSequences  = np.zeros((nearinds, STEER_TIME+1, 4, 1))
-        covarSequences = np.zeros((nearinds, STEER_TIME+1, 4, 4))
-        for i in nearinds:            
-            nearNode = self.nodeList[i]            
+        meanSequences  = np.zeros((len(nearIndices), STEER_TIME+1, 4, 1))
+        covarSequences = np.zeros((len(nearIndices), STEER_TIME+1, 4, 4))
+        for j, nearIndex in enumerate(nearIndices):            
+            nearNode = self.nodeList[nearIndex]            
             # Looping except nearestNode - Uses the overwritten equality check function
             if nearNode == nearestNode:
                 continue
@@ -391,8 +391,8 @@ class DR_RRTStar():
                 if k == 0:
                     continue
                 # Update the meanSequences and covarSequences
-                meanSequences[i,k,:,:]  = x_traj.X
-                covarSequences[i,k,:,:] = x_traj.Sigma
+                meanSequences[j,k,:,:]  = x_traj.X
+                covarSequences[j,k,:,:] = x_traj.Sigma
                 # Check for DR collision
                 theta    = math.atan2(x_traj.X[1] - nearNode.X[1], x_traj.X[0] - nearNode.X[0])
                 distance = self.ComputeDistance(nearNode, x_traj)
@@ -400,27 +400,25 @@ class DR_RRTStar():
                 if not collisionFreeFlag:
                     # There is a collision, so set the distance as infinity and break                    
                     costList.append(float("inf"))
-                    break 
-            # If trajectory is not probabislistically feasible, continue to check for next nearby DR-RRT* tree node
-            if not collisionFreeFlag:
-                continue
+                    break             
             if collisionFreeFlag:
                 # If no collision, that is safe then consider adding the cost of the minNode directly
                 # Compute the recursive cost
-                minNode          = self.ComputeCost(minNode)
-                self.nodeList[i] = self.ComputeCost(self.nodeList[i])
+                #minNode                  = self.ComputeCost(minNode)
+                self.nodeList[nearIndex] = self.ComputeCost(self.nodeList[nearIndex])
                 # Proceed only if J[nearNode] + del*J(sigma,Pi) < J[minNode]
-                if self.nodeList[i].cost + DT*(STEER_TIME+1)*CT < minNode.cost:                    
-                    costList.append(self.nodeList[i].cost + DT*(STEER_TIME+1)*CT)                     
-        # Update the minNode Cost and parent data
-        minIndex = costList.index(min(costList))
-        if min(costList) == float("inf"):            
-            return minNode
-        minNode.cost   = min(costList)
-        minNode.parent = nearinds[minIndex]
-        # Populate minNode with the new mean,covar sequence data
-        minNode.means  = meanSequences[minIndex,:,:,:]
-        minNode.covar  = covarSequences[minIndex,:,:,:]
+                if self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT < minNode.cost:                    
+                    costList.append(self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT)                     
+        # Update the minNode Cost and parent data                
+        if costList:
+            if min(costList) == float("inf"):            
+                return minNode
+            minIndex = costList.index(min(costList))
+            minNode.cost   = min(costList)
+            minNode.parent = nearIndices[minIndex]
+            # Populate minNode with the new mean,covar sequence data
+            minNode.means  = meanSequences[minIndex,:,:,:]
+            minNode.covar  = covarSequences[minIndex,:,:,:]
         return minNode    
     
     ###########################################################################
@@ -458,7 +456,7 @@ class DR_RRTStar():
     
     def FindNearNodes(self, randNode):
         """
-        Returns all nodes that are closer to a given node within some specified radius
+        Returns indices of all nodes that are closer to randNode within a specified radius
         Input Parameters:
         randNode : Node around which the nearest indices have to be selected
         """
@@ -494,70 +492,70 @@ class DR_RRTStar():
         toNode   = to_node.X       
         
         # Run dynamic programming to compute optimal controller
-        K = np.zeros((m,n,T))
-        k = np.zeros((m,1,T))
-        P = np.zeros((n,n,T+1))
-        p = np.zeros((n,1,T+1)) 
+        K = np.zeros((T,m,n))
+        k = np.zeros((T,m,1))
+        P = np.zeros((T+1,n,n))
+        p = np.zeros((T+1,n,1)) 
     
         # Initiliaze terminal time matrices
-        P[:,:,-1] = QT
-        p[:,:,-1] = -np.dot(QT,toNode)
+        P[-1,:,:] = QT
+        p[-1,:,:] = -np.dot(QT,toNode)
 
+        # Run Backward Propagation
         for t in range(T-1,0,-1):
-            P[:,:,t] = Q + A.T @ P[:,:,t+1] @ A - A.T @ P[:,:,t+1] @ B @ inv(R+B.T @ P[:,:,t+1] @ B) @ B.T @ P[:,:,t+1] @ A
-            K[:,:,t] = -inv(R+B.T @ P[:,:,t+1] @ B) @ B.T @ P[:,:,t+1] @ A
-            k[:,:,t] = -inv(R+B.T @ P[:,:,t+1] @ B) @ B.T @ p[:,:,t+1]
-            p[:,:,t] = A.T @ p[:,:,t+1] - np.dot(Q,toNode) + K[:,:,t].T @ B.T @ p[:,:,t+1] + A.T @ P[:,:,t+1] @ B @ k[:,:,t] + K[:,:,t].T @ (R + B.T @ P[:,:,t+1] @ B) @ k[:,:,t] 
+            P[t,:,:] = Q + A.T @ P[t+1,:,:] @ A - A.T @ P[t+1,:,:] @ B @ inv(R+B.T @ P[t+1,:,:] @ B) @ B.T @ P[t+1,:,:] @ A
+            K[t,:,:] = -inv(R+B.T @ P[t+1,:,:] @ B) @ B.T @ P[t+1,:,:] @ A
+            k[t,:,:] = -inv(R+B.T @ P[t+1,:,:] @ B) @ B.T @ p[t+1,:,:]
+            p[t,:,:] = A.T @ p[t+1,:,:] - np.dot(Q,toNode) + K[t,:,:].T @ B.T @ p[t+1,:,:] + A.T @ P[t+1,:,:] @ B @ k[t,:,:] + K[t,:,:].T @ (R + B.T @ P[t+1,:,:] @ B) @ k[t,:,:] 
         
         # Preallocate matrices        
-        u          = np.zeros((m,T));                 # Control Sequence
-        x          = np.zeros((n,T+1));               # True State
-        x[:,1]     = fromNode;                        # Feed the initial condition to the True State
-        x_est      = np.zeros((n,T+1))                # Estimated State
-        x_est[:,1] = fromNode                         # Feed the initial condition to the Estimated State
-        C          = np.identity(n)                   # Output Matrix
-        H          = np.identity(n)                   # Sensor Noise Marix
-        G          = np.identity(n)                   # Disturbance Matrix                
-        KG         = np.zeros((n,n,T+1))              # Kalman Gain Matrix
-        S          = np.zeros((n,n,T+1))              # True State Covariance Matrix
-        S[:,:,1]   = from_node.Sigma                  # Feed the final time condition to the Covariance Estimate
-        A_bar      = np.zeros((2*n,2*n,T))            # New Concatenated Joint System Matrix
-        B_bar      = np.zeros((2*n,m,T))              # New Concatenated Joint Input Matrix
-        G_bar      = np.zeros((2*n,2*n,T))            # New Concatenated Joint Disturbance Matrix
-        pi         = np.zeros((2*n,2*n,T+1))          # Joint Covariance of Both True State and Estimated State
-        P_x0       = np.zeros((n,n))                  # Initial Covariance of True State
-        P_x_est_0  = np.zeros((n,n))                  # Initial Covariance of Estimated State
-        pi_0       = block_diag(P_x0, P_x_est_0)      # Joint Initial Covariance of true and estimated states    
-        pi[:,:,1]  = pi_0                             # Feed the initial condition to the joint covariance 
-        x_trajs    = [trajNode() for i in range(T+1)] # Trajectory data as trajNode object for each steer time step
+        u            = np.zeros((T,m,1));               # Control Sequence
+        x            = np.zeros((T+1,n,1));             # True State
+        x[0,:,:]     = fromNode;                        # Feed the initial condition to the True State
+        x_est        = np.zeros((T+1,n,1))              # Estimated State
+        x_est[0,:,:] = fromNode                         # Feed the initial condition to the Estimated State
+        C            = np.identity(n)                   # Output Matrix
+        H            = np.identity(n)                   # Sensor Noise Marix
+        G            = np.identity(n)                   # Disturbance Matrix                
+        KG           = np.zeros((T+1,n,n))              # Kalman Gain Matrix
+        S            = np.zeros((T+1,n,n))              # True State Covariance Matrix
+        S[0,:,:]     = from_node.Sigma                  # Feed the final time condition to the Covariance Estimate
+        A_bar        = np.zeros((T,2*n,2*n))            # New Concatenated Joint System Matrix
+        B_bar        = np.zeros((T,2*n,m))              # New Concatenated Joint Input Matrix
+        G_bar        = np.zeros((T,2*n,2*n))            # New Concatenated Joint Disturbance Matrix
+        pi           = np.zeros((T+1,2*n,2*n))          # Joint Covariance of Both True State and Estimated State
+        P_x0         = np.zeros((n,n))                  # Initial Covariance of True State
+        P_x_est_0    = np.zeros((n,n))                  # Initial Covariance of Estimated State
+        pi_0         = block_diag(P_x0, P_x_est_0)      # Joint Initial Covariance of true and estimated states    
+        pi[0,:,:]    = pi_0                             # Feed the initial condition to the joint covariance
+        Sigma_v      = 0.001*np.identity(n)             # Realized the measurement noise
+        x_trajs      = [trajNode() for i in range(T+1)] # Trajectory data as trajNode object for each steer time step
         
         # Steer the robot across the finite time horizon using LQG control
-        for t in range(1,T):
-            # Realize the measurement noise
-            Sigma_v      = 0.001*np.identity(n)
+        for t in range(1,T):            
             # control uses estimated state
-            u[:,t]       = K[:,:,t] @ x_est[:,t] + k[:,:,t] 
+            u[t,:,:] = K[t,:,:] @ x_est[t,:,:] + k[t,:,:] 
             # Update the true state
-            x[:,t+1]     = A @ x[:,t] + B @ u[:,t]
+            x[t+1,:,:] = A @ x[t,:,:] + B @ u[t,:,:]
             # update the Kalman Gain
-            KG[:,:,t]    = S[:,:,t] @ C.T @ inv(C @ S[:,:,t] @ C.T + H @ Sigma_v @ H.T)
+            KG[t,:,:] = S[t,:,:] @ C.T @ inv(C @ S[t,:,:] @ C.T + H @ Sigma_v @ H.T)
             # update the estimated state
-            x_est[:,t+1] = KG[:,:,t] @ C @ A @ x[:,t] + (np.identity(n) - KG[:,:,t]@C) @ A @ x_est[:,t] + B @ u[:,t]
+            x_est[t+1,:,:] = KG[t,:,:] @ C @ A @ x[t,:,:] + (np.identity(n) - KG[t,:,:] @ C) @ A @ x_est[t,:,:] + B @ u[t,:,:]
             # stack up the true and estimated states
-            A_bar[:,:,t] = np.block([[A, B @ K[:,:,t]], [KG[:,:,t] @ C @ A, (np.identity(n)-KG[:,:,t] @ C) @ A + B @ K[:,:,t]]])
-            B_bar[:,:,t] = np.block([[B],[B]])
-            G_bar[:,:,t] = np.block([[G, np.zeros((n,n))], [KG[:,:,t] @ C @ G, KG[:,:,t] @ H]])
+            A_bar[t,:,:] = np.block([[A, B @ K[t,:,:]], [KG[t,:,:] @ C @ A, (np.identity(n)-KG[t,:,:] @ C) @ A + B @ K[t,:,:]]])
+            B_bar[t,:,:] = np.block([[B],[B]])
+            G_bar[t,:,:] = np.block([[G, np.zeros((n,n))], [KG[t,:,:] @ C @ G, KG[t,:,:] @ H]])
             # propagate the joint covariance
-            pi[:,:,t+1]  = A_bar[:,:,t] @ pi[:,:,t] @ A_bar[:,:,t].T + G_bar[:,:,t] @ block_diag(W, Sigma_v) @ G_bar[:,:,t].T
+            pi[t+1,:,:] = A_bar[t,:,:] @ pi[t,:,:] @ A_bar[t,:,:].T + G_bar[t,:,:] @ block_diag(W, Sigma_v) @ G_bar[t,:,:].T
             # Extract the true state covariance alone
-            S[:,:,t+1]   = np.block([np.identity(n), np.zeros((n,n))]) @ pi[:,:,t+1] @  np.block([np.identity(n), np.zeros((n,n))]).T 
+            S[t+1,:,:] = np.block([np.identity(n), np.zeros((n,n))]) @ pi[t+1,:,:] @  np.block([np.identity(n), np.zeros((n,n))]).T 
             
         # Update the trajectory object at time step t+1        
         for k, x_traj in enumerate(x_trajs): 
             if k == 0:
                 continue                          
-            x_traj.X  = x[:,k]
-            x_traj.Sigma = S[:,:,k]
+            x_traj.X  = x[k,:,:]
+            x_traj.Sigma = S[k,:,:]
         return x_trajs   
     
 
@@ -647,58 +645,66 @@ class DR_RRTStar():
     
     ###########################################################################
     
-    def DrawGraph(self, rnd=None, ellNode=None,freeFlag=None,initialFlag=None):        
+    def DrawGraph(self, randNode=None, ellipseNode=None,freeFlag=None,initialFlag=None):        
         """        
-        Updates the Plot with final course and trajectory at each time step
+        Updates the Plot with uncertainty ellipse and trajectory at each time step
         Input Parameters:
-        rnd        : Node data representing the randomly sampled point 
-        ellNode    : Node representing the data to plot the covariance ellipse        
-        freeFlag   : This is set for plotting the safe/collided trajectory
-        initialFlag: This is set for plotting the initial position and obstacle locations
-        """
-        
+        randNode    : Node data representing the randomly sampled point 
+        ellipseNode : Node representing the data to plot the covariance ellipse        
+        freeFlag    : This is set for plotting the safe/collided trajectory
+        initialFlag : This is set for plotting the initial position and obstacle locations
+        """        
         # Plot the start position and rectangle obstacles
         if initialFlag == 1:
+            # Plot the Starting position
             plt.plot(self.start.x, self.start.y, "xr")        
             plt.axis([-5, 20, -5, 20])
             plt.grid(True)  
-            rects = [Rectangle(xy=[ox, oy], width=wd, height=ht, angle=0, color="k", facecolor="k",) for (ox, oy, wd, ht) in self.obstacleList]
-            for rect in rects:
-                plt.axes().add_artist(rect)            
+            # Plot the rectangle obstacles
+            obstacles = [Rectangle(xy        = [ox, oy], 
+                                   width     = wd, 
+                                   height    = ht, 
+                                   angle     = 0, 
+                                   color     = "k", 
+                                   facecolor = "k",) for (ox, oy, wd, ht) in self.obstacleList]
+            for obstacle in obstacles:
+                plt.axes().add_artist(obstacle)            
             
-        if rnd is not None:
+        if initialFlag is None and randNode is not None:
             # Plot the randomly sampled point 
-            rx, = plt.plot(rnd.x, rnd.y, "^k")
-        
-            if freeFlag == 0: # Danger Trajectory 
-                for node in self.nodeList:
-                    if node.parent is not None:   
-                        plt.plot([node.x, self.nodeList[node.parent].x], 
-                                 [node.y, self.nodeList[node.parent].y], "-r", alpha=0.8)                                
-            elif freeFlag == 1: # Safe Trajectory
-                for node in self.nodeList:
-                    if node.parent is not None:   # Safe Trajectory
-                        plt.plot([node.x, self.nodeList[node.parent].x], 
-                                 [node.y, self.nodeList[node.parent].y], "-g", alpha=0.8)
-            
-            # Plot the intersecting Ellipse        
-            if ellNode is not None:            
-                alfa     = math.atan2(ellNode.X[1],ellNode.X[0])
-                elcovar  = np.asarray(ellNode.Sigma)            
-                elE, elV = np.linalg.eig(elcovar[0:2,0:2])
-                ellObj   = Ellipse(xy = [ellNode.X[0], ellNode.X[1]], 
-                                   width  = math.sqrt(elE[0]), 
-                                   height = math.sqrt(elE[1]), 
-                                   angle  = alfa * 360)
-                plt.axes().add_artist(ellObj)
-                ellObj.set_clip_box(plt.axes().bbox)
-                ellObj.set_alpha(0.9)
-                if freeFlag == 0: # Collision - Red Danger Trajectory Ellipses               
-                    ellObj.set_facecolor('r')
-                elif freeFlag == 1: # No Collision - Green Safe Trajectory Ellipses    
-                    ellObj.set_facecolor('g')
-                  
-            plt.pause(0.01)
+            rx, = plt.plot(randNode.X[0], randNode.X[1], "^k")            
+             
+            # Plotting the risk bounded trajectories
+            ellNodeShape = ellipseNode.means.shape
+            for k in range(ellNodeShape[0]):
+                if k == 0:
+                    continue
+                # Prepare the Ellipse Object
+                if ellipseNode is not None:                     
+                    alfa     = math.atan2(ellipseNode.means[k,1,0],ellipseNode.means[k,0,0])
+                    elcovar  = np.asarray(ellipseNode.covar[k,:,:])            
+                    elE, elV = np.linalg.eig(elcovar[0:2,0:2])
+                    ellObj   = Ellipse(xy = [ellipseNode.means[k,0,0], ellipseNode.means[k,1,0]], 
+                                       width  = math.sqrt(elE[0]), 
+                                       height = math.sqrt(elE[1]), 
+                                       angle  = alfa * 360)
+                    plt.axes().add_artist(ellObj)
+                    ellObj.set_clip_box(plt.axes().bbox)
+                    ellObj.set_alpha(0.9)
+                    # Plot trajectory and the intersecting Ellipse at time step k
+                    if freeFlag == 0:
+                        # Unsafe Trajectory 
+                        plt.plot([ellipseNode.means[k,0,0], ellipseNode.means[k-1,0,0]], 
+                                 [ellipseNode.means[k,1,0], ellipseNode.means[k-1,1,0]], "-r", alpha=0.8) 
+                        # Collision - Red Danger Trajectory Ellipse               
+                        ellObj.set_facecolor('r')
+                    elif freeFlag == 1:
+                        # Safe Trajectory
+                        plt.plot([ellipseNode.means[k,0,0], ellipseNode.means[k-1,0,0]], 
+                                 [ellipseNode.means[k,1,0], ellipseNode.means[k-1,1,0]], "-g", alpha=0.8) 
+                        # No Collision - Green Safe Trajectory Ellipse    
+                        ellObj.set_facecolor('g')
+                plt.pause(0.001)
             rx.remove()
 
 ###############################################################################
