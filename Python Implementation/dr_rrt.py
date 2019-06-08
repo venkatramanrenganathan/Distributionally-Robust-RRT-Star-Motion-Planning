@@ -6,7 +6,6 @@ Distributionally Robust RRT Code - Dr. Summers Idea
 """        
 import random
 import math
-import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
