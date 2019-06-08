@@ -303,7 +303,7 @@ def main():
     G  = B                                                         # Disturbance Input Matrix
     Q  = np.block([[4*np.identity(2), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])            # State Stage cost Penalty
     QT = np.block([[100*np.identity(2), np.zeros((2,2))],[np.zeros((2,2)), 0.1*np.identity(2)]])          # State Terminal Penalty    
-    R  = 0.02*np.identity(2)                                                                              # Input Penalty 
+    R  = 0.2*np.identity(2)                                                                              # Input Penalty 
     W  = np.block([[np.zeros((2,2)), np.zeros((2,2))],[np.zeros((2,2)), 0.001*np.array([[2,1],[1,2]])]])  # Disturbance covariance    
     S0 = np.block([[0.001*np.identity(2), np.zeros((2,2))],[np.zeros((2,2)), np.zeros((2,2))]])          # Initial State Covariance    
     init_param = [A,B,C,G,Q,QT,R,W,S0]    
