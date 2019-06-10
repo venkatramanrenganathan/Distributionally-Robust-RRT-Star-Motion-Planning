@@ -20,7 +20,6 @@ will be useful, but WITHOUT ANY WARRANTY.
 # Import all the required libraries
 import random
 import math
-import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
@@ -33,13 +32,13 @@ from numpy import linalg as LA
 ###############################################################################
 
 # Defining Global Variables
-show_animation = True  # Flag to decide to show animation or not
-STEER_TIME     = 10    # Maximum Steering Time Horizon
-DT             = 0.1   # Time tick(discretization time)
-P0             = 0.0   # Optimal Cost-To-Go Matrix - Will be updated below
-CT             = 1.0   # Minimum Path Cost - CT = f(\hat{x}, P)
-EnvConstant    = 50.0  # Environment Constant - Used in computing search radius
-M              = 5     # Number of neighbors to be considered while trying to connect
+show_animation  = True  # Flag to decide to show animation or not
+STEER_TIME      = 10    # Maximum Steering Time Horizon
+DT              = 0.1   # Time tick(discretization time)
+P0              = 0.0   # Optimal Cost-To-Go Matrix - Will be updated below
+CT              = 1.0   # Minimum Path Cost - CT = f(\hat{x}, P)
+EnvConstant     = 50.0  # Environment Constant - Used in computing search radius
+M               = 5     # Number of neighbors to be considered while trying to connect
 
 ###############################################################################
 ###############################################################################
@@ -104,17 +103,20 @@ class DR_RRTStar():
         randArea:Ramdom Samping Area [min,max]
         """
         # Add the Double Integrator Data    
-        self.controlPenalty                 = 0.02
-        self.initParam                      = self.GetDynamicsData()
-        self.start                          = Node(start[0], start[1]) # Start Node Coordinates        
-        self.minrand                        = randArea[0]
-        self.maxrand                        = randArea[1]
-        self.expandDis                      = expandDis        
-        self.maxIter                        = maxIter                
-        self.obstacleList                   = self.initParam[9]        
-        self.alfa                           = [0.01 + (0.05-0.01)*random.random() 
-                                               for i in range(len(self.obstacleList))]        
-        self.start.covar[STEER_TIME-1,:,:]  = self.initParam[8]               
+        self.controlPenalty = 0.02
+        self.initParam      = self.GetDynamicsData()
+        self.start          = Node(start[0], start[1]) # Start Node Coordinates 
+        self.minrand        = randArea[0]
+        self.maxrand        = randArea[1]
+        self.expandDis      = expandDis        
+        self.maxIter        = maxIter                
+        self.obstacleList   = self.initParam[9]        
+        self.alfa           = [0.01 + (0.05-0.01)*random.random() 
+                               for i in range(len(self.obstacleList))] 
+        self.rewireNodeList = []    # Node List to hold the values of main nodes for rewiring
+        # Set the covariance sequence to the initial condition value
+        for k in range(STEER_TIME):
+            self.start.covar[k,:,:] = self.initParam[8]               
         
     ###########################################################################
     
@@ -126,24 +128,24 @@ class DR_RRTStar():
         A  = np.array([[1,0,DT,0],
                        [0, 1, 0, DT],
                        [0,0,1,0],
-                       [0,0,0,1]])                                          # System Dynamics Matrix 
+                       [0,0,0,1]])                                        # System Dynamics Matrix 
         
         B  = np.array([[(DT**2)/2, 0],
                         [0, (DT**2)/2],
                         [DT, 0],
-                        [0,DT]])                                            # Input Matrix
+                        [0,DT]])                                          # Input Matrix
         C  = np.array([[1,0,0,0],
-                       [0,1,0,0]])                                          # Output Matrix
-        G  = B                                                              # Disturbance Input Matrix
+                       [0,1,0,0]])                                        # Output Matrix
+        G  = B                                                            # Disturbance Input Matrix
         Q  = np.block([[40*np.identity(2), np.zeros((2,2))],
                         [np.zeros((2,2)), 2*np.identity(2)]])             # State Stage cost Penalty
         QT = np.block([[100*np.identity(2), np.zeros((2,2))],
                         [np.zeros((2,2)), 2*np.identity(2)]])             # State Terminal Penalty    
         R  = self.controlPenalty * np.identity(2)                           # Control/Input Penalty 
         W  = np.block([[np.zeros((2,2)), np.zeros((2,2))],
-                        [np.zeros((2,2)), 0.001*np.array([[2,1],[1,2]])]])  # Disturbance covariance    
-        S0 = np.block([[0.001*np.identity(2), np.zeros((2,2))],
-                        [np.zeros((2,2)), np.zeros((2,2))]])                # Initial State Covariance                           
+                        [np.zeros((2,2)), 0.1*np.array([[2,1],[1,2]])]])  # Disturbance covariance    
+        S0 = np.block([[0.01*np.identity(2), np.zeros((2,2))],
+                        [np.zeros((2,2)), 0.01*np.identity(2)]])          # Initial State Covariance                           
     
         # Obstacle Location Format [ox,oy,wd,ht]: ox, oy specifies the bottom left corner of rectangle with width: wd and height: ht
         obstacleList = [(0.6, 0.6, 0.1, 0.1),
@@ -166,7 +168,7 @@ class DR_RRTStar():
         node         : Node containing position data which has to be checked for collision         
         """
         for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList):            
-            relax   = 0.05 # THIS HAS TO BE REMOVED - CHECK CAREFULLY
+            relax   = 0.00 # THIS HAS TO BE REMOVED - CHECK CAREFULLY
             xrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(trajNode.Sigma @ np.array([ox,0,0,0]).T) + relax
             yrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(trajNode.Sigma @ np.array([0,oy,0,0]).T) + relax
             xdrelax = math.sqrt((1-alfa)/alfa)*LA.norm(trajNode.Sigma @ np.array([ox+wd,0,0,0]).T) + relax
@@ -254,8 +256,7 @@ class DR_RRTStar():
         Input Parameters:        
         nearIndices : Indices of the nodes that are nearest to the randomNode
         minNode  : Node with minimum cost paths
-        """        
-        totalNodes = len(self.nodeList)
+        """               
         meanSequences  = np.zeros((len(nearIndices), STEER_TIME+1, 4, 1))
         covarSequences = np.zeros((len(nearIndices), STEER_TIME+1, 4, 4))
         # Get all ancestors of minNode
@@ -282,23 +283,24 @@ class DR_RRTStar():
                 if not collisionFreeFlag:  
                     break            
             if collisionFreeFlag:
-                self.nodeList[nearIndex].cost = self.ComputeCost(self.nodeList[nearIndex])
-                #minNode.cost                  = self.ComputeCost(minNode)
+                self.nodeList[nearIndex].cost = self.ComputeCost(self.nodeList[nearIndex])                
                 if self.nodeList[nearIndex].cost > minNode.cost + DT*(STEER_TIME+1)*CT: 
-#                    # Vanilla RRT* Rewiring main code
-#                    self.nodeList[nearIndex].cost = minNode.cost + DT*(STEER_TIME+1)*CT
-#                    self.nodeList[nearIndex].parent = totalNodes - 1
+                    # Vanilla RRT* Rewiring main code
+                    self.nodeList[nearIndex].cost   = minNode.cost + DT*(STEER_TIME+1)*CT
+                    self.nodeList[nearIndex].parent = self.nodeList.index(self.rewireNodeList[-1:])
+                    # Previous Implementations
+#                    self.nodeList[nearIndex].parent = self.nodeList.index(minNode)  # totalNodes - 1
 #                    # Prepare newNode with means,covar sequences  
-                    minNodeIndex   = self.nodeList.index(minNode)                             
-                    newNode        = self.nodeList[nearIndex]
-                    newNode.means  = meanSequences[j,:,:,:]
-                    newNode.covar  = covarSequences[j,:,:,:]
-                    newNode.parent = minNodeIndex # totalNodes - 1 # should be index of minNode
-                    newNode.cost   = minNode.cost + DT*(STEER_TIME+1)*CT
-                    # Delete nearNode from DR-RRT* Tree
-                    self.nodeList.pop(nearIndex)
-                    # Add newNode with means,covar sequences to the DR-RRT* tree
-                    self.nodeList.insert(nearIndex, newNode)
+#                    minNodeIndex   = self.nodeList.index(minNode)                             
+#                    newNode        = self.nodeList[nearIndex]
+#                    newNode.means  = meanSequences[j,:,:,:]
+#                    newNode.covar  = covarSequences[j,:,:,:]
+#                    newNode.parent = minNodeIndex # totalNodes - 1 # should be index of minNode
+#                    newNode.cost   = minNode.cost + DT*(STEER_TIME+1)*CT
+#                    # Delete nearNode from DR-RRT* Tree
+#                    self.nodeList.pop(nearIndex)
+#                    # Add newNode with means,covar sequences to the DR-RRT* tree
+#                    self.nodeList.insert(nearIndex, newNode)
 
     ###########################################################################
     
@@ -344,8 +346,7 @@ class DR_RRTStar():
                     break             
             if collisionFreeFlag:
                 # If no collision, then consider adding the cost of the minNode directly
-                # Compute the recursive cost
-                #minNode.cost                  = self.ComputeCost(minNode)
+                # Compute the recursive cost                
                 self.nodeList[nearIndex].cost = self.ComputeCost(self.nodeList[nearIndex])
                 # Proceed only if J[nearNode] + del*J(sigma,Pi) < J[minNode]
                 if self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT < minNode.cost:                    
@@ -403,7 +404,7 @@ class DR_RRTStar():
         """
         totalNodes   = len(self.nodeList)
         searchRadius = EnvConstant * math.sqrt((math.log(totalNodes) / totalNodes))    
-        distanceList = [self.ComputeDistance(self.GetLastSequenceNode(node), randNode) for node in self.nodeList]        
+        distanceList = [self.ComputeDistance(self.GetLastSequenceNode(node), randNode, initialFlag=1) for node in self.nodeList]        
         nearinds     = [distanceList.index(i) for i in distanceList if i <= searchRadius ** 2]        
         return nearinds
     
@@ -442,7 +443,7 @@ class DR_RRTStar():
         P[-1,:,:] = QT
         p[-1,:,:] = -np.dot(QT,toNode)
 
-        # Run Backward Propagation
+        # Run Backward Propagation Offline
         for t in range(T-1,0,-1):
             P[t,:,:] = Q + A.T @ P[t+1,:,:] @ A - A.T @ P[t+1,:,:] @ B @ inv(R+B.T @ P[t+1,:,:] @ B) @ B.T @ P[t+1,:,:] @ A
             K[t,:,:] = -inv(R+B.T @ P[t+1,:,:] @ B) @ B.T @ P[t+1,:,:] @ A
@@ -505,8 +506,7 @@ class DR_RRTStar():
         Returns the indices of top M nodes in the tree that are closest to the randomly sampled node
         Input Parameters:        
         randNode  : The randomly sampled node around which a nearest node in the DR-RRT* tree has to be returned
-        M         : Total number of indices to be returned        
-        #minind = dlist.index(min(dlist)) - Old Implementation
+        M         : Total number of indices to be returned    
         """
         distanceList = [self.ComputeDistance(self.GetLastSequenceNode(node),randNode) for node in self.nodeList]            
         return np.argsort(distanceList)[:M]
@@ -569,17 +569,22 @@ class DR_RRTStar():
     
     ###########################################################################
     
-    def ComputeDistance(self, fromNode, toNode):
+    def ComputeDistance(self, fromNode, toNode, initialFlag=None):
         """
         Returns the distance between two nodes computed using the dynamic control-based distance metric
         Input parameters:
-        fromNode : Node representing point A
-        toNode   : Node representing point B
+        fromNode    : Node representing point A
+        toNode      : Node representing point B
+        initialFlag : Flag determining whether to use simple euclidean distance metric or a dynamic control based metric
         """
         diffVec = fromNode.X - toNode.X
+        # If initialFlag is set, use the dynamic control-based distance metric
+        if initialFlag:
+            P0 = self.initParam[10]
+            return diffVec.T @ P0 @ diffVec
+        # Else you the simple euclidean distance metric
         return math.sqrt(diffVec[0] ** 2 + diffVec[1] ** 2)
-#        P0       = self.initParam[10]
-#        return diffVec.T @ P0 @ diffVec                
+#                        
     
     ###########################################################################
     
@@ -596,7 +601,7 @@ class DR_RRTStar():
         if initialFlag == 1:
             # Plot the Starting position
             plt.plot(self.start.x, self.start.y, "xr")        
-            plt.axis([-0.25, 1.25, -0.25, 1.25])
+            plt.axis([0, 1, 0, 1])
             plt.grid(True)  
             # Plot the rectangle obstacles
             obstacles = [Rectangle(xy        = [ox, oy], 
@@ -617,9 +622,9 @@ class DR_RRTStar():
                 if k == 0:
                     continue                
                 if ellipseNode is not None:                    
-                    # Plot trajectory and the intersecting Ellipse at time step k                    
+                    # Plot trajectory and the intersecting Ellipse at time step k                     
                     plt.plot([ellipseNode.means[k,0,0], ellipseNode.means[k-1,0,0]], 
-                             [ellipseNode.means[k,1,0], ellipseNode.means[k-1,1,0]], "-g", alpha=0.8) 
+                             [ellipseNode.means[k,1,0], ellipseNode.means[k-1,1,0]], "-g", marker='o', markersize=2, alpha=0.8) 
                     # Plot only the last ellipse in the trajectory 
                     if k == ellNodeShape[0]-1:
                         # Prepare the Ellipse Object                    
@@ -657,8 +662,9 @@ class DR_RRTStar():
         self.initParam.append(P0)
         
         # Add the start node to the nodeList
-        self.nodeList = [self.start]
+        self.nodeList   = [self.start]                
         
+        # Iterate over the maximum allowable number of nodes
         for iter in range(self.maxIter): 
             print("Iteration no:",iter)              
                 
@@ -698,26 +704,28 @@ class DR_RRTStar():
                         # Collision with obtacle happens - Add the node to the tree, update the figure and break  
                         # Create a Node with trajectory sequence data upto the collision instant                    
                         print("Planned Trajectory Collides with obstacle")                        
-                        clashNode = self.PrepareNode(randNode, x_trajs, k-1) 
+                        clashNode = self.PrepareNode(randNode, x_trajs, k-1)                         
                         # Third Argument 1 means it is a collision-free trajectory, 0 means it is a collision trajectory                                                 
                         self.DrawGraph(randNode, clashNode, freeFlag=collisionFreeFlag)  
                         # self.nodeList.append(clashNode)                    
                         break                 
                 if collisionFreeFlag:
                     pathFoundFlag = True
+                    # Record the DR-RRT* Tree node from where successfull connection was made
+                    self.rewireNodeList.append(nearestDRNode)
                     # Distributionally Robust (Probabilistically) Safe Trajectory with no collision
                     # Create a Node with trajectory sequence data but don't add to the tree for the time being
                     # k+STEER_TIME will make sure that only trajectory data is used for creating the DR-RRT* tree node               
                     minNode  = self.PrepareNode(randNode, x_trajs, k+STEER_TIME)  
                     # Get all the nodes in the Dr-RRT* Tree that are closer to the randomNode within a specified search radius
-                    nearinds = self.FindNearNodeIndices(randNode)                    
+                    nearInds = self.FindNearNodeIndices(randNode)                    
                     # Choose the minimum cost path to connect the random node
-                    minNode  = self.ChooseParent(nearinds, nearestDRNode, randNode, minNode)
+                    minNode  = self.ChooseParent(nearInds, nearestDRNode, randNode, minNode)
                     # Add the minNode to the DR-RRT* Tree
                     self.nodeList.append(minNode)
-                    # Rewire the tree with newly added minNode
-                    self.ReWire(nearinds, minNode)    
-                    # Third Argument 1 means it is a collision-free trajectory, 0 means it is a collision trajectory                                                 
+                    # Rewire the tree with newly added minNode                    
+                    self.ReWire(nearInds, minNode)    
+                    # Third Argument 1 means it is a collision-free trajectory, 0 means it is a collision trajectory                     
                     self.DrawGraph(randNode, minNode, freeFlag=collisionFreeFlag) 
                     break
 
