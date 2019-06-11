@@ -32,13 +32,14 @@ from numpy import linalg as LA
 ###############################################################################
 
 # Defining Global Variables
-show_animation  = True  # Flag to decide to show animation or not
-STEER_TIME      = 10    # Maximum Steering Time Horizon
-DT              = 0.1   # Time tick(discretization time)
-P0              = 0.0   # Optimal Cost-To-Go Matrix - Will be updated below
-CT              = 1.0   # Minimum Path Cost - CT = f(\hat{x}, P)
-EnvConstant     = 50.0  # Environment Constant - Used in computing search radius
-M               = 5     # Number of neighbors to be considered while trying to connect
+show_animation  = True         # Flag to decide to show animation or not
+STEER_TIME      = 10           # Maximum Steering Time Horizon
+DT              = 0.1          # Time tick(discretization time)
+P0              = 0.0          # Optimal Cost-To-Go Matrix - Will be updated below
+CT              = 1.0          # Minimum Path Cost - CT = f(\hat{x}, P)
+EnvConstant     = 50.0         # Environment Constant - Used in computing search radius
+M               = 5            # Number of neighbors to be considered while trying to connect
+fig             = plt.figure() # Python Figure handle
 
 ###############################################################################
 ###############################################################################
@@ -113,7 +114,7 @@ class DR_RRTStar():
         self.obstacleList   = self.initParam[9]        
         self.alfa           = [0.01 + (0.05-0.01)*random.random() 
                                for i in range(len(self.obstacleList))] 
-        self.rewireNodeList = []    # Node List to hold the values of main nodes for rewiring
+        self.rewireNodeList = [self.start]    # Node List to hold the values of main nodes for rewiring
         # Set the covariance sequence to the initial condition value
         for k in range(STEER_TIME):
             self.start.covar[k,:,:] = self.initParam[8]               
@@ -287,7 +288,7 @@ class DR_RRTStar():
                 if self.nodeList[nearIndex].cost > minNode.cost + DT*(STEER_TIME+1)*CT: 
                     # Vanilla RRT* Rewiring main code
                     self.nodeList[nearIndex].cost   = minNode.cost + DT*(STEER_TIME+1)*CT
-                    self.nodeList[nearIndex].parent = self.nodeList.index(self.rewireNodeList[-1:])
+                    self.nodeList[nearIndex].parent = self.nodeList.index(self.nearestDRNode)-1 # self.nodeList.index(self.rewireNodeList[-2:])-1
                     # Previous Implementations
 #                    self.nodeList[nearIndex].parent = self.nodeList.index(minNode)  # totalNodes - 1
 #                    # Prepare newNode with means,covar sequences  
@@ -626,7 +627,7 @@ class DR_RRTStar():
                     plt.plot([ellipseNode.means[k,0,0], ellipseNode.means[k-1,0,0]], 
                              [ellipseNode.means[k,1,0], ellipseNode.means[k-1,1,0]], "-g", marker='o', markersize=2, alpha=0.8) 
                     # Plot only the last ellipse in the trajectory 
-                    if k == ellNodeShape[0]-1:
+                    if k == ellNodeShape[0]+10:#-1:
                         # Prepare the Ellipse Object                    
                         alfa     = math.atan2(ellipseNode.means[k,1,0],ellipseNode.means[k,0,0])
                         elcovar  = np.asarray(ellipseNode.covar[k,:,:])            
@@ -644,7 +645,8 @@ class DR_RRTStar():
                         elif freeFlag == 1:
                             # Green Safe Ellipse    
                             ellObj.set_facecolor('g')
-                plt.pause(0.001)
+                fig.canvas.draw()
+                plt.pause(0.00001)
             rx.remove()
     
     ###########################################################################
@@ -675,15 +677,15 @@ class DR_RRTStar():
             nearestIndices = self.GetNearestListIndices(randNode, M)  
             
             pathFoundFlag = False
-            # Loop through all the M=3 nearestIndices
+            # Loop through all the M=5 nearestIndices
             for numId, nearestIndex in enumerate(nearestIndices):
                 if pathFoundFlag:
                     break
                 # Set the nearestIndex as the nearestNode and try to connect               
-                nearestDRNode  = self.nodeList[nearestIndex] 
+                self.nearestDRNode  = self.nodeList[nearestIndex] 
                 
                 # Get the last sequence data of nearestNode DR-RRT* Tree Node as a trajNode object
-                nearestNode = self.GetLastSequenceNode(nearestDRNode)
+                nearestNode = self.GetLastSequenceNode(self.nearestDRNode)
                 
                 # Try steering from nearestNode to the random sample using steer function
                 # Steer function returns a list of node points along the trajectory 
@@ -698,7 +700,7 @@ class DR_RRTStar():
                     # collisionFreeFlag = True : Safe Trajectory, False: Unsafe Trajectory
                     collisionFreeFlag = self.DRCollisionCheck(x_traj)
                     # Add all trajectory points except the last point in the trajectory - that will be added below
-                    if collisionFreeFlag and k != len(x_trajs)-1:
+                    if collisionFreeFlag and k != len(x_trajs):
                         self.AddPathNode(x_traj)                         
                     if not collisionFreeFlag:                    
                         # Collision with obtacle happens - Add the node to the tree, update the figure and break  
@@ -712,7 +714,7 @@ class DR_RRTStar():
                 if collisionFreeFlag:
                     pathFoundFlag = True
                     # Record the DR-RRT* Tree node from where successfull connection was made
-                    self.rewireNodeList.append(nearestDRNode)
+                    self.rewireNodeList.append(self.nearestDRNode)
                     # Distributionally Robust (Probabilistically) Safe Trajectory with no collision
                     # Create a Node with trajectory sequence data but don't add to the tree for the time being
                     # k+STEER_TIME will make sure that only trajectory data is used for creating the DR-RRT* tree node               
@@ -720,7 +722,7 @@ class DR_RRTStar():
                     # Get all the nodes in the Dr-RRT* Tree that are closer to the randomNode within a specified search radius
                     nearInds = self.FindNearNodeIndices(randNode)                    
                     # Choose the minimum cost path to connect the random node
-                    minNode  = self.ChooseParent(nearInds, nearestDRNode, randNode, minNode)
+                    minNode  = self.ChooseParent(nearInds, self.nearestDRNode, randNode, minNode)
                     # Add the minNode to the DR-RRT* Tree
                     self.nodeList.append(minNode)
                     # Rewire the tree with newly added minNode                    
