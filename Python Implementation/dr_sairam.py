@@ -284,11 +284,19 @@ class DR_RRTStar():
                 if not collisionFreeFlag:  
                     break            
             if collisionFreeFlag:
-                self.nodeList[nearIndex].cost = self.ComputeCost(self.nodeList[nearIndex])                
+                self.nodeList[nearIndex].cost = self.ComputeCost(self.nodeList[nearIndex]) 
+                d = self.ComputeDistance(self.GetLastSequenceNode(self.nodeList[nearIndex]), self.GetLastSequenceNode(minNode))
+                if self.nodeList[nearIndex].cost + d < minNode.cost:                    
+                    # Vanilla RRT* Rewiring main code
+                    self.nodeList[nearIndex].cost   = minNode.cost + d
+                    self.nodeList[nearIndex].parent = self.nodeList.index(minNode) - STEER_TIME # self.nodeList.index(self.nearestDRNode)-1 # self.nodeList.index(self.rewireNodeList[-2:])-1
+#                if self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT < minNode.cost:                    
+#                    costList.append(self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT)           
+                
                 if self.nodeList[nearIndex].cost > minNode.cost + DT*(STEER_TIME+1)*CT: 
                     # Vanilla RRT* Rewiring main code
                     self.nodeList[nearIndex].cost   = minNode.cost + DT*(STEER_TIME+1)*CT
-                    self.nodeList[nearIndex].parent = self.nodeList.index(self.nearestDRNode)-1 # self.nodeList.index(self.rewireNodeList[-2:])-1
+                    self.nodeList[nearIndex].parent = self.nodeList.index(minNode) - STEER_TIME # self.nodeList.index(self.nearestDRNode)-1 # self.nodeList.index(self.rewireNodeList[-2:])-1
                     # Previous Implementations
 #                    self.nodeList[nearIndex].parent = self.nodeList.index(minNode)  # totalNodes - 1
 #                    # Prepare newNode with means,covar sequences  
@@ -350,8 +358,11 @@ class DR_RRTStar():
                 # Compute the recursive cost                
                 self.nodeList[nearIndex].cost = self.ComputeCost(self.nodeList[nearIndex])
                 # Proceed only if J[nearNode] + del*J(sigma,Pi) < J[minNode]
-                if self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT < minNode.cost:                    
-                    costList.append(self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT)                     
+                d = self.ComputeDistance(self.GetLastSequenceNode(self.nodeList[nearIndex]), self.GetLastSequenceNode(minNode))
+                if self.nodeList[nearIndex].cost + d < minNode.cost:
+                    costList.append(self.nodeList[nearIndex].cost + d)                     
+#                if self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT < minNode.cost:                    
+#                    costList.append(self.nodeList[nearIndex].cost + DT*(STEER_TIME+1)*CT)                     
         # Update the minNode Cost and parent data                
         if costList:
             if min(costList) == float("inf"):            
@@ -627,7 +638,7 @@ class DR_RRTStar():
                     plt.plot([ellipseNode.means[k,0,0], ellipseNode.means[k-1,0,0]], 
                              [ellipseNode.means[k,1,0], ellipseNode.means[k-1,1,0]], "-g", marker='o', markersize=2, alpha=0.8) 
                     # Plot only the last ellipse in the trajectory 
-                    if k == ellNodeShape[0]+10:#-1:
+                    if k == ellNodeShape[0]-1:
                         # Prepare the Ellipse Object                    
                         alfa     = math.atan2(ellipseNode.means[k,1,0],ellipseNode.means[k,0,0])
                         elcovar  = np.asarray(ellipseNode.covar[k,:,:])            
