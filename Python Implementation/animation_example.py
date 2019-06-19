@@ -1,164 +1,43 @@
+"""
+Matplotlib Animation Example
+
+author: Jake Vanderplas
+email: vanderplas@astro.washington.edu
+website: http://jakevdp.github.com
+license: BSD
+Please feel free to use and modify this, but keep the above information. Thanks!
+"""
+
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+from matplotlib import pyplot as plt
+from matplotlib import animation
 
-
-def data_gen(t=0):
-    cnt = 0
-    while cnt < 1000:
-        cnt += 1
-        t += 0.1
-        yield t, np.sin(2*np.pi*t) * np.exp(-t/10.)
-
-
-def init():
-    ax.set_ylim(-1.1, 1.1)
-    ax.set_xlim(0, 10)
-    del xdata[:]
-    del ydata[:]
-    line.set_data(xdata, ydata)
-    return line,
-
-fig, ax = plt.subplots()
+# First set up the figure, the axis, and the plot element we want to animate
+fig = plt.figure()
+ax = plt.axes(xlim=(0, 2), ylim=(-2, 2))
 line, = ax.plot([], [], lw=2)
-ax.grid()
-xdata, ydata = [], []
 
-
-def run(data):
-    # update the data
-    t, y = data
-    xdata.append(t)
-    ydata.append(y)
-    xmin, xmax = ax.get_xlim()
-
-    if t >= xmax:
-        ax.set_xlim(xmin, 2*xmax)
-        ax.figure.canvas.draw()
-    line.set_data(xdata, ydata)
-
+# initialization function: plot the background of each frame
+def init():
+    line.set_data([], [])
     return line,
 
-ani = animation.FuncAnimation(fig, run, data_gen, blit=False, interval=10,
-                              repeat=False, init_func=init)
+# animation function.  This is called sequentially
+def animate(i):
+    x = np.linspace(0, 2, 1000)
+    y = np.sin(2 * np.pi * (x - 0.01 * i))
+    line.set_data(x, y)
+    return line,
+
+# call the animator.  blit=True means only re-draw the parts that have changed.
+anim = animation.FuncAnimation(fig, animate, init_func=init,
+                               frames=200, interval=20, blit=True)
+
+# save the animation as an mp4.  This requires ffmpeg or mencoder to be
+# installed.  The extra_args ensure that the x264 codec is used, so that
+# the video can be embedded in html5.  You may need to adjust this for
+# your system: for more information, see
+# http://matplotlib.sourceforge.net/api/animation_api.html
+anim.save('basic_animation.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+
 plt.show()
-
-# To save the animation, use e.g.
-#
-# ani.save("movie.mp4")
-#
-# or
-#
-# from matplotlib.animation import FFMpegWriter
-# writer = FFMpegWriter(fps=15, metadata=dict(artist='Me'), bitrate=1800)
-# ani.save("movie.mp4", writer=writer)
-
-plt.show()
-
-
-#import numpy as np
-#import numpy.random as npr
-#import matplotlib.pyplot as plt
-#from matplotlib import animation
-#
-## https://stackoverflow.com/questions/22010586/matplotlib-animation-duration
-#
-#
-#n = 10
-#A0 = npr.randn(n,n)
-#fig,ax=plt.subplots()
-#im=plt.imshow(A0,cmap='afmhot_r',animated=True)
-#def update(t):
-#    global A
-#    A = A0*np.cos(0.01*2*np.pi*t)
-#    im.set_data(A)
-#    return im,
-#a=animation.FuncAnimation(fig,update,interval=10,blit=True)
-#
-## Set up formatting for the movie files
-#Writer = animation.writers['ffmpeg']
-#writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
-#a.save('animation.mp4', writer=writer)
-
-
-#import numpy as np
-#import matplotlib.pyplot as plt
-#import matplotlib.animation as animation
-#
-#fig = plt.figure()
-#
-#
-#def f(x, y):
-#    return np.sin(x) + np.cos(y)
-#
-#x = np.linspace(0, 2 * np.pi, 120)
-#y = np.linspace(0, 2 * np.pi, 100).reshape(-1, 1)
-## ims is a list of lists, each row is a list of artists to draw in the
-## current frame; here we are just animating one artist, the image, in
-## each frame
-#ims = []
-#for i in range(60):
-#    x += np.pi / 15.
-#    y += np.pi / 20.
-#    im = plt.imshow(f(x, y), animated=True)
-#    ims.append([im])
-#
-#ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True,
-#                                repeat_delay=1000)
-#
-#ani.save('dynamic_images.mp4')
-#
-#plt.show()
-
-#"""
-#===================
-#Saving an animation
-#===================
-#
-#This example showcases the same animations as `basic_example.py`, but instead
-#of displaying the animation to the user, it writes to files using a
-#MovieWriter instance.
-#"""
-#
-## -*- noplot -*-
-#import numpy as np
-#import matplotlib
-#matplotlib.use("Agg")
-#import matplotlib.pyplot as plt
-#import matplotlib.animation as animation
-#Writer = animation.FFMpegWriter(fps=30, codec='libx264') # Or 
-#
-#
-#def update_line(num, data, line):
-#    line.set_data(data[..., :num])
-#    return line,
-#
-## Set up formatting for the movie files
-#Writer = animation.writers['ffmpeg']
-#writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
-#
-#
-#fig1 = plt.figure()
-#
-#data = np.random.rand(2, 25)
-#l, = plt.plot([], [], 'r-')
-#plt.xlim(0, 1)
-#plt.ylim(0, 1)
-#plt.xlabel('x')
-#plt.title('test')
-#line_ani = animation.FuncAnimation(fig1, update_line, 25, fargs=(data, l),
-#                                   interval=50, blit=True)
-#line_ani.save('lines.mp4', writer=writer)
-#
-#fig2 = plt.figure()
-#
-#x = np.arange(-9, 10)
-#y = np.arange(-9, 10).reshape(-1, 1)
-#base = np.hypot(x, y)
-#ims = []
-#for add in np.arange(15):
-#    ims.append((plt.pcolor(x, y, base + add, norm=plt.Normalize(0, 30)),))
-#
-#im_ani = animation.ArtistAnimation(fig2, ims, interval=50, repeat_delay=3000,
-#                                   blit=True)
-#im_ani.save('im.mp4', writer=Writer)

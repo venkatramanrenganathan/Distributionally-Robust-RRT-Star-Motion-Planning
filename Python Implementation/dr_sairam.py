@@ -36,7 +36,7 @@ show_animation  = True         # Flag to decide to show animation or not
 STEER_TIME      = 10           # Maximum Steering Time Horizon
 DT              = 0.1          # Time tick(discretization time)
 P0              = 0.0          # Optimal Cost-To-Go Matrix - Will be updated below
-CT              = 1.0          # Minimum Path Cost - CT = f(\hat{x}, P)
+CT              = 1.0          # Minimum Path Cost: CT = f(\hat{x}, P)
 EnvConstant     = 50.0         # Environment Constant - Used in computing search radius
 M               = 5            # Number of neighbors to be considered while trying to connect
 fig             = plt.figure() # Python Figure handle
@@ -69,8 +69,7 @@ class Node():
         self.y      = y                              # y position
         self.xd     = 0.0                            # x velocity
         self.yd     = 0.0                            # y velocity
-        self.cost   = 0.0                            # cost 
-        self.safe   = True                           # Safety Flag
+        self.cost   = 0.0                            # Cost         
         self.parent = None                           # Index of the parent node       
         self.means  = np.zeros((STEER_TIME+1, 4, 1)) # Mean Sequence
         self.covar  = np.zeros((STEER_TIME+1, 4, 4)) # Covariance Sequence
@@ -661,6 +660,8 @@ class DR_RRTStar():
         freeFlag    : This is set for plotting the safe/collided trajectory
         initialFlag : This is set for plotting the initial position and obstacle locations
         """        
+        # Get the figure object
+        fig = plt.figure()
         # Plot the start position and rectangle obstacles
         if initialFlag == 1:
             # Plot the Starting position
@@ -711,7 +712,10 @@ class DR_RRTStar():
             elif freeFlag == 1:
                 # Green Safe Ellipse    
                 ellObj.set_facecolor('g')
-            fig.canvas.draw()
+#            fig.canvas.draw()
+            # Creating the Animation object
+            line_ani = animation.FuncAnimation(fig, update_lines, 25, fargs=(data, lines),
+                                   interval=50, blit=False)
             plt.pause(0.00001)
             rx.remove()
     
