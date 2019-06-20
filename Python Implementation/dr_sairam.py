@@ -300,8 +300,7 @@ class DR_RRTStar():
         """
         distanceList = []
         for node in self.nodeList:
-            distanceList.append(self.ComputeDistance(self.GetLastSequenceNode(node),randNode,euclidFlag=1))        
-        sortedIndex  = np.argsort(distanceList).tolist()
+            distanceList.append(self.ComputeDistance(self.GetLastSequenceNode(node),randNode,euclidFlag=1))                
         return [distanceList.index(min(distanceList))]
     
     ###########################################################################
