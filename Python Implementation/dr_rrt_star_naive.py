@@ -173,6 +173,7 @@ class RRT():
             if nearNode.cost > scost:
                 theta = math.atan2(dy, dx)
                 if self.check_collision_extend(nearNode, theta, d):
+                    print("Rewiring happening")
                     nearNode.parent = nnode - 1
                     nearNode.cost = scost
 
