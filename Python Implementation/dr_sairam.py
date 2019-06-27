@@ -480,30 +480,34 @@ class DR_RRTStar():
         x2 = toPoint.X[0]
         y2 = toPoint.X[1]
         
-        for ox, oy, wd, ht in self.obstacleList: 
+        for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList):   
+            xrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(fromPoint.Sigma, np.array([-1,0,0,0])))
+            yrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(fromPoint.Sigma, np.array([0,-1,0,0])))
+            xdrelax = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(fromPoint.Sigma, np.array([1,0,0,0])))
+            ydrelax = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(fromPoint.Sigma, np.array([0,1,0,0])))
             # Left Check
-            x3 = ox
-            y3 = oy
-            x4 = ox
-            y4 = oy + ht            
+            x3 = ox - xrelax
+            y3 = oy + ydrelax
+            x4 = ox - xrelax
+            y4 = oy + ht + ydrelax            
             leftCdtn = self.LineLineIntersectionCheck(x1,y1,x2,y2,x3,y3,x4,y4)
             # Right Check
-            x3 = ox + wd
-            y3 = oy
-            x4 = ox + wd
-            y4 = oy + ht
+            x3 = ox + wd + xdrelax
+            y3 = oy + ydrelax
+            x4 = ox + wd + xdrelax
+            y4 = oy + ht + ydrelax
             rightCdtn = self.LineLineIntersectionCheck(x1,y1,x2,y2,x3,y3,x4,y4)
             # Bottom Check
-            x3 = ox
-            y3 = oy
-            x4 = ox + wd
-            y4 = oy
+            x3 = ox - xrelax
+            y3 = oy - yrelax
+            x4 = ox + wd + xdrelax
+            y4 = oy - yrelax
             bottomCdtn = self.LineLineIntersectionCheck(x1,y1,x2,y2,x3,y3,x4,y4)
             # Top Check
-            x3 = ox
-            y3 = oy + ht
-            x4 = ox + wd
-            y4 = oy + ht
+            x3 = ox - xrelax
+            y3 = oy + ht + ydrelax
+            x4 = ox + wd + xdrelax
+            y4 = oy + ht + ydrelax
             topCdtn = self.LineLineIntersectionCheck(x1,y1,x2,y2,x3,y3,x4,y4)
             
             if leftCdtn or rightCdtn or topCdtn or bottomCdtn:
@@ -660,6 +664,13 @@ class DR_RRTStar():
 #                    self.nodeList[nearIndex].parent = len(self.nodeList) - 1                    
 #                    # Update the cost of all descendants
 #                    self.UpdateDescendantsCost(self.nodeList[nearIndex])
+#                    # New Code Try
+#                    self.nodeList[nearIndex].means  = meanSequences[j,:,:,:]
+#                    self.nodeList[nearIndex].covar  = covarSequences[j,:,:,:]
+#                    self.nodeList[nearIndex].parent = len(self.nodeList)-1
+#                    self.nodeList[nearIndex].cost   = minNode.cost + sequenceCost
+#                    # Update the cost of all descendants
+#                    self.UpdateDescendantsCost(self.nodeList[nearIndex])
                     # Prepare newNode with means,covar sequences                                               
                     newNode        = self.nodeList[nearIndex]
                     newNode.means  = meanSequences[j,:,:,:]
@@ -672,7 +683,9 @@ class DR_RRTStar():
                     self.nodeList.insert(nearIndex, newNode)
                     # Update the cost of all descendants
                     self.UpdateDescendantsCost(newNode)
-    
+                    
+                    
+                        
     ###########################################################################
     
     def UpdateDescendantsCost(self, newNode):
@@ -707,7 +720,7 @@ class DR_RRTStar():
         Updates the Plot with uncertainty ellipse and trajectory at each time step
         Input Parameters:
         randNode    : Node data representing the randomly sampled point                 
-        """ 
+        """         
         # Plot the Starting position
         plt.plot(self.start.x, self.start.y, "xr")        
         plt.axis([0, 1, 0, 1])
@@ -735,7 +748,7 @@ class DR_RRTStar():
                         xPlotValues.append(ellipseNode.means[k,0,0])
                         yPlotValues.append(ellipseNode.means[k,1,0])
                 # Plot the trajectory x,y vectors 
-                plt.plot(xPlotValues, yPlotValues, "-g", alpha=0.2)
+                plt.plot(xPlotValues, yPlotValues, "-g", marker='o', markersize=2,alpha=0.2)
                 # Plot only the last ellipse in the trajectory             
                 k == ellNodeShape[0]
                 # Prepare the Ellipse Object                    
@@ -820,8 +833,9 @@ class DR_RRTStar():
                     # Rewire the tree with newly added minNode                    
                     self.ReWire(nearInds, minNode)    
                     # Plot the trajectory - How often do I need to see the trajectories 
-                    if iter % 10 == 0:
-                        self.DrawGraph(randNode) 
+                    self.DrawGraph(randNode) 
+#                    if iter % 10 == 0:
+#                        self.DrawGraph(randNode) 
                     # Since we found a DR Trajectory path to connect the random sample, break the loop.
                     break
 
