@@ -112,6 +112,7 @@ class DR_RRTStar():
         self.maxrand        = randArea[1]               
         self.maxIter        = maxIter                
         self.obstacleList   = self.initParam[9]  
+        self.deleteNodeList = []
         self.alfa           = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05] # [0.01 + (0.05-0.01)*random.random() for i in range(len(self.obstacleList))]         
         # Set the covariance sequence to the initial condition value
         for k in range(STEER_TIME):
@@ -677,14 +678,53 @@ class DR_RRTStar():
                     newNode.covar  = covarSequences[j,:,:,:]
                     newNode.parent = len(self.nodeList)-1 # totalNodes - 1 # should be index of minNode
                     newNode.cost   = minNode.cost + sequenceCost
-                    # Delete nearNode from DR-RRT* Tree                    
+                    # Delete nearNode from DR-RRT* Tree by deleting all trajectories to it
+                    # self.UnDrawTrajectories(self.nodeList[nearIndex])
+                    self.deleteNodeList.append(self.nodeList[nearIndex])
                     self.nodeList.pop(nearIndex)                    
                     # Add newNode with means,covar sequences to the DR-RRT* tree
                     self.nodeList.insert(nearIndex, newNode)
                     # Update the cost of all descendants
                     self.UpdateDescendantsCost(newNode)
                     
-                    
+    ###########################################################################
+
+    def UnDrawTrajectories(self, deleteNode):
+        """    
+        Undraws the trajectories -equivalent to deleting the already drawn trajectory  
+        Input Parameters:
+        deleteNode: Node whose trajectory to be deleted.
+        """
+        if deleteNode.parent is not Node:
+            # Plotting the risk bounded trajectories
+            ellNodeShape = deleteNode.means.shape
+            # Prepare the trajectory x and y vectors
+            xPlotValues  = []
+            yPlotValues  = []
+            for k in range(ellNodeShape[0]):              
+                if deleteNode is not None:  
+                    xPlotValues.append(deleteNode.means[k,0,0])
+                    yPlotValues.append(deleteNode.means[k,1,0])
+            # Plot the trajectory x,y vectors 
+            plt.plot(xPlotValues, yPlotValues, "-w")
+            # Plot only the last ellipse in the trajectory             
+            k == ellNodeShape[0]
+            # Prepare the Ellipse Object                    
+            alfa     = math.atan2(deleteNode.means[k,1,0],
+                                  deleteNode.means[k,0,0])
+            elcovar  = np.asarray(deleteNode.covar[k,:,:])            
+            elE, elV = np.linalg.eig(elcovar[0:2,0:2])
+            ellObj   = Ellipse(xy     = [deleteNode.means[k,0,0], deleteNode.means[k,1,0]], 
+                               width  = math.sqrt(elE[0]), 
+                               height = math.sqrt(elE[1]), 
+                               angle  = alfa * 360)
+            plt.axes().add_artist(ellObj)
+            ellObj.set_clip_box(plt.axes().bbox)
+            ellObj.set_alpha(0.2)                                    
+            # White Ellipse    
+            ellObj.set_facecolor('w')                      
+            
+                
                         
     ###########################################################################
     
@@ -722,6 +762,7 @@ class DR_RRTStar():
         randNode    : Node data representing the randomly sampled point                 
         """         
         # Plot the Starting position
+        
         plt.plot(self.start.x, self.start.y, "xr")        
         plt.axis([0, 1, 0, 1])
         plt.grid(True)  
@@ -748,7 +789,7 @@ class DR_RRTStar():
                         xPlotValues.append(ellipseNode.means[k,0,0])
                         yPlotValues.append(ellipseNode.means[k,1,0])
                 # Plot the trajectory x,y vectors 
-                plt.plot(xPlotValues, yPlotValues, "-g", marker='o', markersize=2,alpha=0.2)
+                plt.plot(xPlotValues, yPlotValues, "-g", alpha=0.2)
                 # Plot only the last ellipse in the trajectory             
                 k == ellNodeShape[0]
                 # Prepare the Ellipse Object                    
@@ -779,7 +820,7 @@ class DR_RRTStar():
         self.initParam.append(P0)
         
         # Add the start node to the nodeList
-        self.nodeList   = [self.start]                
+        self.nodeList = [self.start]                
         
         # Iterate over the maximum allowable number of nodes
         for iter in range(self.maxIter): 
@@ -832,7 +873,7 @@ class DR_RRTStar():
                     self.nodeList.append(minNode)
                     # Rewire the tree with newly added minNode                    
                     self.ReWire(nearInds, minNode)    
-                    # Plot the trajectory - How often do I need to see the trajectories 
+                    # Plot the trajectory - Decide how often do you need to see the trajectories 
                     self.DrawGraph(randNode) 
 #                    if iter % 10 == 0:
 #                        self.DrawGraph(randNode) 
