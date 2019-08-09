@@ -236,7 +236,7 @@ class DR_RRTStar():
             parentCost     = self.ComputeCost(self.nodeList[calculateNode.parent])  
             sequenceCost   = self.ComputeDistance(self.GetLastSequenceNode(calculateNode),
                                                   self.GetLastSequenceNode(self.nodeList[calculateNode.parent]), 
-                                                  euclidFlag=1)                  
+                                                  euclidFlag=0)                  
             calculatedCost = parentCost + sequenceCost
             return calculatedCost
     
@@ -303,7 +303,7 @@ class DR_RRTStar():
         """
         distanceList = []
         for node in self.nodeList:
-            distanceList.append(self.ComputeDistance(self.GetLastSequenceNode(node),randNode,euclidFlag=1))                
+            distanceList.append(self.ComputeDistance(self.GetLastSequenceNode(node),randNode,euclidFlag=0))                
         return np.argsort(distanceList)[:M]
     
     ###########################################################################
@@ -550,7 +550,7 @@ class DR_RRTStar():
         """
         totalNodes   = len(self.nodeList)
         searchRadius = ENVCONSTANT * math.sqrt((math.log(totalNodes) / totalNodes))    
-        distanceList = [self.ComputeDistance(self.GetLastSequenceNode(node), randNode, euclidFlag=1) for node in self.nodeList]        
+        distanceList = [self.ComputeDistance(self.GetLastSequenceNode(node), randNode, euclidFlag=0) for node in self.nodeList]        
         nearinds     = [distanceList.index(i) for i in distanceList if i <= searchRadius ** 2]        
         return nearinds
     
@@ -590,7 +590,7 @@ class DR_RRTStar():
             for k, x_traj in enumerate(x_trajs):                 
                 # Update the sequence cost
                 if k != 0:
-                    sequenceCost = sequenceCost + self.ComputeDistance(x_trajs[k], x_trajs[k-1],euclidFlag=1)                
+                    sequenceCost = sequenceCost + self.ComputeDistance(x_trajs[k], x_trajs[k-1],euclidFlag=0)                
                 # Update the meanSequences and covarSequences
                 meanSequences[j,k,:,:]  = x_traj.X
                 covarSequences[j,k,:,:] = x_traj.Sigma                
@@ -644,7 +644,7 @@ class DR_RRTStar():
             for k, x_traj in enumerate(x_trajs):                                   
                 # Update the sequence cost
                 if k != 0:
-                    sequenceCost = sequenceCost + self.ComputeDistance(x_trajs[k], x_trajs[k-1],euclidFlag=1)
+                    sequenceCost = sequenceCost + self.ComputeDistance(x_trajs[k], x_trajs[k-1],euclidFlag=0)
                 # Update the meanSequences and covarSequences
                 meanSequences[j,k,:,:]  = x_traj.X
                 covarSequences[j,k,:,:] = x_traj.Sigma
@@ -679,17 +679,17 @@ class DR_RRTStar():
                     newNode.parent = len(self.nodeList)-1 # totalNodes - 1 # should be index of minNode
                     newNode.cost   = minNode.cost + sequenceCost
                     # Delete nearNode from DR-RRT* Tree by deleting all trajectories to it
-                    # self.UnDrawTrajectories(self.nodeList[nearIndex])
+                    #self.UnDrawTrajectories(self.nodeList[nearIndex])
                     self.deleteNodeList.append(self.nodeList[nearIndex])
                     self.nodeList.pop(nearIndex)                    
                     # Add newNode with means,covar sequences to the DR-RRT* tree
                     self.nodeList.insert(nearIndex, newNode)
                     # Update the cost of all descendants
-                    self.UpdateDescendantsCost(newNode)
+                    # self.UpdateDescendantsCost(newNode)
                     
     ###########################################################################
 
-    def UnDrawTrajectories(self, deleteNode):
+     def UnDrawTrajectories(self, deleteNode):
         """    
         Undraws the trajectories -equivalent to deleting the already drawn trajectory  
         Input Parameters:
