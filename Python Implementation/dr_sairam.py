@@ -240,9 +240,15 @@ class DR_RRTStar():
         if calculateNode.parent is None:            
             return 0 
         elif calculateNode.parent is not None:            
-            parentCost   = self.ComputeCost(self.nodeList[calculateNode.parent])                          
-            calculatedCost = parentCost + SEQUENCECOST
-            return calculatedCost
+            parentCost = self.ComputeCost(self.nodeList[calculateNode.parent])  
+            parentNode = self.nodeList[calculateNode.parent]
+            fromNode   = trajNode()
+            fromNode.X = np.array([calculateNode.x, calculateNode.y, calculateNode.xd, calculateNode.yd])
+            toNode   = trajNode()
+            toNode.X = np.array([parentNode.x, parentNode.y, parentNode.xd, parentNode.yd])              
+            connectCost = self.ComputeDistance(fromNode, toNode)
+            totalCost   = parentCost + connectCost
+            return totalCost
     
     ###########################################################################
     
@@ -300,9 +306,10 @@ class DR_RRTStar():
         randNode  : The randomly sampled node around which a nearest node in the DR-RRT* tree has to be returned        
         """
         distanceList = []
-        for node in self.nodeList:
-            nodeX = np.array([node.x, node.y, node.xd, node.yd])
-            distanceList.append(np.linalg.norm(nodeX - randNode.X))                
+        for node in self.nodeList:            
+            fromNode = trajNode()
+            fromNode.X = np.array([node.x, node.y, node.xd, node.yd])
+            distanceList.append(self.ComputeDistance(fromNode, randNode))                
         return distanceList.index(min(distanceList))
     
     ###########################################################################
@@ -407,11 +414,13 @@ class DR_RRTStar():
             # Extract the true state covariance alone
             S[t+1,:,:] = np.block([np.identity(n), np.zeros((n,n))]) @ pi[t+1,:,:] @  np.block([np.identity(n), np.zeros((n,n))]).T 
             
+        # Compute the trajectory cost as x_0'Px_0
+        trajCost = x[0,:,:].T @ P[0,:,:] @ x[0,:,:] 
         # Update the trajectory object at time step t+1        
         for k, xTraj in enumerate(xTrajs):                                      
             xTraj.X     = x[k,:,:]
             xTraj.Sigma = S[k,:,:]
-        return xTrajs   
+        return xTrajs, trajCost   
     
     ###########################################################################
        
@@ -548,8 +557,9 @@ class DR_RRTStar():
         searchRadius = ENVCONSTANT * math.sqrt((math.log(totalNodes) / totalNodes)) 
         distanceList = []
         for node in self.nodeList:
-            nodeX = np.array([node.x, node.y, node.xd, node.yd])
-            distanceList.append(np.linalg.norm(nodeX - randNode.X))        
+            fromNode = trajNode()
+            fromNode.X = np.array([node.x, node.y, node.xd, node.yd])
+            distanceList.append(self.ComputeDistance(fromNode, randNode))             
         nearIndices  = [distanceList.index(i) for i in distanceList if i <= searchRadius ** 2]        
         return nearIndices
     
@@ -574,8 +584,7 @@ class DR_RRTStar():
         # Create holders for mean and covariance sequences
         meanSequences  = np.zeros((len(nearIndices), STEER_TIME+1, 4, 1))
         covarSequences = np.zeros((len(nearIndices), STEER_TIME+1, 4, 4))        
-        for j, nearIndex in enumerate(nearIndices): 
-            sequenceCost = SEQUENCECOST
+        for j, nearIndex in enumerate(nearIndices):             
             nearNode     = self.nodeList[nearIndex]            
             # Looping except nearestNode - Uses the overwritten equality check function
             if nearNode == nearestNode:
@@ -584,7 +593,7 @@ class DR_RRTStar():
             nearNode = self.GetLastSequenceNode(nearNode)
             
             # Try steering from nearNode to randNodeand get the trajectory
-            xTrajs = self.SteerUsingLQGControl(nearNode, randNode) 
+            xTrajs, sequenceCost = self.SteerUsingLQGControl(nearNode, randNode)             
             
             # Now check for collision along the trajectory
             lineRectangleCollisionFreeFlag = True
@@ -622,8 +631,7 @@ class DR_RRTStar():
         covarSequences = np.zeros((len(nearIndices), STEER_TIME+1, 4, 4))        
         # Get all ancestors of minNode
         minNodeAncestors = self.GetAncestors(minNode)
-        for j, nearIndex in enumerate(nearIndices):                      
-            sequenceCost = SEQUENCECOST
+        for j, nearIndex in enumerate(nearIndices):                                  
             # Avoid looping all ancestors of minNode            
             if np.any([self.nodeList[nearIndex] == minNodeAncestor for minNodeAncestor in minNodeAncestors]):
                 continue            
@@ -631,7 +639,7 @@ class DR_RRTStar():
             nearNode    = self.GetLastSequenceNode(self.nodeList[nearIndex])
             minLastNode = self.GetLastSequenceNode(minNode)
             # Steer from minLastNode to nearNode
-            xTrajs = self.SteerUsingLQGControl(minLastNode, nearNode) 
+            xTrajs, sequenceCost = self.SteerUsingLQGControl(minLastNode, nearNode) 
             # Perform Collision Check
             lineRectangleCollisionFreeFlag = True                       
             for k, xTraj in enumerate(xTrajs):             
@@ -676,45 +684,7 @@ class DR_RRTStar():
                 if not lineRectangleCollisionFreeFlag:
                     return False
         # If everything is fine, return True
-        return True
-    
-    
-    ###########################################################################
-
-    def UnDrawTrajectories(self, deleteNode):
-        """    
-        Undraws the trajectories -equivalent to deleting the already drawn trajectory  
-        Input Parameters:
-        deleteNode: Node whose trajectory to be deleted.
-        """
-        if deleteNode.parent is not Node:
-            # Plotting the risk bounded trajectories
-            ellNodeShape = deleteNode.means.shape
-            # Prepare the trajectory x and y vectors
-            xPlotValues  = []
-            yPlotValues  = []
-            for k in range(ellNodeShape[0]):              
-                if deleteNode is not None:  
-                    xPlotValues.append(deleteNode.means[k,0,0])
-                    yPlotValues.append(deleteNode.means[k,1,0])
-            # Plot the trajectory x,y vectors 
-            plt.plot(xPlotValues, yPlotValues, "-w")
-            # Plot only the last ellipse in the trajectory             
-            k == ellNodeShape[0]
-            # Prepare the Ellipse Object                    
-            alfa     = math.atan2(deleteNode.means[k,1,0],
-                                  deleteNode.means[k,0,0])
-            elcovar  = np.asarray(deleteNode.covar[k,:,:])            
-            elE, elV = np.linalg.eig(elcovar[0:2,0:2])
-            ellObj   = Ellipse(xy     = [deleteNode.means[k,0,0], deleteNode.means[k,1,0]], 
-                               width  = math.sqrt(elE[0]), 
-                               height = math.sqrt(elE[1]), 
-                               angle  = alfa * 360)
-            plt.axes().add_artist(ellObj)
-            ellObj.set_clip_box(plt.axes().bbox)
-            ellObj.set_alpha(0.2)                                    
-            # White Ellipse    
-            ellObj.set_facecolor('w')  
+        return True 
                         
     ###########################################################################
     
@@ -731,7 +701,8 @@ class DR_RRTStar():
             # Ignore Root node and all ancestors of newNode - Just additional check
             if childNode.parent is None or childNode.parent < newNodeIndex:
                 continue    
-            if childNode.parent == newNodeIndex:                
+            if childNode.parent == newNodeIndex:  
+                # Update the correct sequence cost
                 childNode.cost = newNode.cost + SEQUENCECOST
                 # Get one more level deeper
                 self.UpdateDescendantsCost(childNode)
@@ -838,7 +809,7 @@ class DR_RRTStar():
             
             # Try steering from nearestNode to the random sample using steer function
             # Steer function returns a list of node points along the trajectory 
-            xTrajs = self.SteerUsingLQGControl(nearestNode, randNode) 
+            xTrajs, trajCost = self.SteerUsingLQGControl(nearestNode, randNode) 
             
             # Check for Distributionally Robust Feasibility of the whole trajectory
             # For each point in the trajectory, check for collision with all the obstacles                 
