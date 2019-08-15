@@ -24,6 +24,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from matplotlib.patches import Rectangle
+from matplotlib.collections import EllipseCollection
 from scipy.linalg import block_diag
 from numpy.linalg import inv
 from numpy import linalg as LA
@@ -104,7 +105,8 @@ class DR_RRTStar():
         randArea: Ramdom Samping Area [min,max]
         maxIter : Maximum # of iterations to run for constructing DR-RRT* Tree
         """
-        # Add the Double Integrator Data    
+        # Add the Double Integrator Data  
+        self.iter           = 0
         self.controlPenalty = 0.02
         self.initParam      = self.GetDynamicsData()
         self.start          = Node(start[0], start[1]) # Start Node Coordinates 
@@ -257,6 +259,7 @@ class DR_RRTStar():
         P0      = self.initParam[10]
         return diffVec @ P0 @ diffVec.T
     
+    
     ###########################################################################
     
     def RandFreeCheck(self, randNode):
@@ -298,7 +301,8 @@ class DR_RRTStar():
         """
         distanceList = []
         for node in self.nodeList:
-            distanceList.append(self.ComputeDistance(self.GetLastSequenceNode(node),randNode))                
+            nodeX = np.array([node.x, node.y, node.xd, node.yd])
+            distanceList.append(np.linalg.norm(nodeX - randNode.X))                
         return distanceList.index(min(distanceList))
     
     ###########################################################################
@@ -541,10 +545,13 @@ class DR_RRTStar():
         randNode : Node around which the nearest indices have to be selected        
         """
         totalNodes   = len(self.nodeList)
-        searchRadius = ENVCONSTANT * math.sqrt((math.log(totalNodes) / totalNodes))    
-        distanceList = [self.ComputeDistance(self.GetLastSequenceNode(node), randNode) for node in self.nodeList]        
-        nearinds     = [distanceList.index(i) for i in distanceList if i <= searchRadius ** 2]        
-        return nearinds
+        searchRadius = ENVCONSTANT * math.sqrt((math.log(totalNodes) / totalNodes)) 
+        distanceList = []
+        for node in self.nodeList:
+            nodeX = np.array([node.x, node.y, node.xd, node.yd])
+            distanceList.append(np.linalg.norm(nodeX - randNode.X))        
+        nearIndices  = [distanceList.index(i) for i in distanceList if i <= searchRadius ** 2]        
+        return nearIndices
     
     ###########################################################################
     
@@ -707,9 +714,7 @@ class DR_RRTStar():
             ellObj.set_clip_box(plt.axes().bbox)
             ellObj.set_alpha(0.2)                                    
             # White Ellipse    
-            ellObj.set_facecolor('w')                      
-            
-                
+            ellObj.set_facecolor('w')  
                         
     ###########################################################################
     
@@ -757,38 +762,53 @@ class DR_RRTStar():
         Updates the Plot with uncertainty ellipse and trajectory at each time step
         Input Parameters:
         randNode: Node data representing the randomly sampled point                 
-        """     
-        # Plot the randomly sampled point 
-        rx, = plt.plot(randNode.X[0], randNode.X[1], "^k")        
+        """              
+               
+        
+        xValues      = []
+        yValues      = []
+        widthValues  = []
+        heightValues = []
+        angleValues  = []
+        lineObjects  = []
+        
         for ellipseNode in self.nodeList:
-            if ellipseNode is not None and ellipseNode.parent is not None:
-                # Plotting the risk bounded trajectories
+            if ellipseNode is not None and ellipseNode.parent is not None:                
                 ellNodeShape = ellipseNode.means.shape
-                # Prepare the trajectory x and y vectors and plot them
                 xPlotValues  = []
                 yPlotValues  = []
+                # Prepare the trajectory x and y vectors and plot them                
                 for k in range(ellNodeShape[0]):                                    
                     xPlotValues.append(ellipseNode.means[k,0,0])
-                    yPlotValues.append(ellipseNode.means[k,1,0])                
-                plt.plot(xPlotValues, yPlotValues, "-g", alpha=0.2) 
-#                # Plot only the last ellipse in the trajectory             
-#                k == ellNodeShape[0]
-#                # Prepare the Ellipse Object                    
-#                alfa     = math.atan2(ellipseNode.means[k,1,0],
-#                                      ellipseNode.means[k,0,0])
-#                elcovar  = np.asarray(ellipseNode.covar[k,:,:])            
-#                elE, elV = np.linalg.eig(elcovar[0:2,0:2])
-#                ellObj   = Ellipse(xy     = [ellipseNode.means[k,0,0], ellipseNode.means[k,1,0]], 
-#                                   width  = math.sqrt(elE[0]), 
-#                                   height = math.sqrt(elE[1]), 
-#                                   angle  = alfa * 360)
-#                plt.axes().add_artist(ellObj)
-#                ellObj.set_clip_box(plt.axes().bbox)
-#                ellObj.set_alpha(0.2)                                    
-#                # Green Safe Ellipse    
-#                ellObj.set_facecolor('g')                      
-                plt.pause(0.0001)
-        rx.remove()
+                    yPlotValues.append(ellipseNode.means[k,1,0]) 
+                # Plotting the risk bounded trajectories
+                lx, = plt.plot(xPlotValues, yPlotValues, "-b", alpha=0.2)
+                lineObjects.append(lx)
+                # Plot only the last ellipse in the trajectory             
+                k == ellNodeShape[0]
+                # Prepare the Ellipse Object                    
+                alfa     = math.atan2(ellipseNode.means[k,1,0], ellipseNode.means[k,0,0])
+                elcovar  = np.asarray(ellipseNode.covar[k,:,:])            
+                elE, elV = np.linalg.eig(elcovar[0:2,0:2])
+                xValues.append(ellipseNode.means[k,0,0])
+                yValues.append(ellipseNode.means[k,1,0])
+                widthValues.append(math.sqrt(elE[0]))
+                heightValues.append(math.sqrt(elE[1]))
+                angleValues.append(alfa*360)         
+         
+        XY = np.column_stack((xValues, yValues))                                                 
+        # Plot the randomly sampled point
+        rx, = plt.plot(randNode.X[0], randNode.X[1], "^k")                
+        # Plot the Safe Ellipses
+        ec = EllipseCollection(widthValues, heightValues, angleValues, units='x', offsets=XY,
+                       transOffset=plt.axes().transData)        
+        plt.axes().add_collection(ec)
+        plt.pause(0.0001)
+        if self.iter < self.maxIter-1:
+            rx.remove()
+            ec.remove()
+            for lx in lineObjects:
+                lx.remove() 
     
     ###########################################################################
             
@@ -801,6 +821,7 @@ class DR_RRTStar():
         
         # Iterate over the maximum allowable number of nodes
         for iter in range(self.maxIter): 
+            self.iter = iter
             print("Iteration no:",iter)              
                 
             # Get a random feasible point in the space as a trajNode object
@@ -827,7 +848,7 @@ class DR_RRTStar():
             if collisionFreeFlag:                
                 # Create minNode with trajectory data & Don't add to the tree for the time being                               
                 minNode = self.PrepareMinNode(nearestIndex, randNode, xTrajs)  
-                # Get all the nodes in the Dr-RRT* Tree that are closer to the randomNode within a specified search radius
+                # Get all the nodes in the DR-RRT* Tree that are closer to the randomNode within a specified search radius
                 nearIndices = self.FindNearNodeIndices(randNode)                    
                 # Choose the minimum cost path to connect the random node
                 minNode  = self.ChooseParent(nearIndices, nearestIndex, nearestNode, randNode, minNode)
@@ -835,8 +856,8 @@ class DR_RRTStar():
                 self.nodeList.append(minNode)
                 # Rewire the tree with newly added minNode                    
                 self.ReWire(nearIndices, minNode)    
-                # Plot the trajectory - Decide how often do you need to see the trajectories 
-                self.DrawGraph(randNode)                 
+            # Plot the trajectory            
+            self.DrawGraph(randNode)                 
 
 ###############################################################################
 ###############################################################################
@@ -848,7 +869,7 @@ def main():
     plt.close('all')
     
     # Create the DR_RRTStar Class Object by initizalizng the required data
-    dr_rrtstar = DR_RRTStar(start=[0, 0], randArea=[0, 1], maxIter=500)
+    dr_rrtstar = DR_RRTStar(start=[0, 0], randArea=[0, 1], maxIter=30)
     
     # Perform DR_RRTStar Tree Expansion
     dr_rrtstar.ExpandTree()    
