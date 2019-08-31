@@ -22,7 +22,6 @@ import random
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
 from matplotlib.patches import Rectangle
 from matplotlib.collections import EllipseCollection
 from scipy.linalg import block_diag
@@ -263,8 +262,7 @@ class DR_RRTStar():
         diffVec = (fromNode.X - toNode.X)[:,0]                
         diffVec = diffVec.T 
         P0      = self.initParam[10]
-        return diffVec @ P0 @ diffVec.T
-    
+        return diffVec @ P0 @ diffVec.T    
     
     ###########################################################################
     
@@ -733,8 +731,7 @@ class DR_RRTStar():
         Updates the Plot with uncertainty ellipse and trajectory at each time step
         Input Parameters:
         randNode: Node data representing the randomly sampled point                 
-        """              
-               
+        """    
         
         xValues      = []
         yValues      = []
@@ -745,7 +742,7 @@ class DR_RRTStar():
         
         for ellipseNode in self.nodeList:
             if ellipseNode is not None and ellipseNode.parent is not None:                
-                ellNodeShape = ellipseNode.means.shape
+                ellNodeShape = ellipseNode.means.shape  
                 xPlotValues  = []
                 yPlotValues  = []
                 # Prepare the trajectory x and y vectors and plot them                
@@ -754,7 +751,7 @@ class DR_RRTStar():
                     yPlotValues.append(ellipseNode.means[k,1,0]) 
                 # Plotting the risk bounded trajectories
                 lx, = plt.plot(xPlotValues, yPlotValues, "-b", alpha=0.2)
-                lineObjects.append(lx)
+                lineObjects.append(lx)  
                 # Plot only the last ellipse in the trajectory             
                 k == ellNodeShape[0]
                 # Prepare the Ellipse Object                    
@@ -765,14 +762,19 @@ class DR_RRTStar():
                 yValues.append(ellipseNode.means[k,1,0])
                 widthValues.append(math.sqrt(elE[0]))
                 heightValues.append(math.sqrt(elE[1]))
-                angleValues.append(alfa*360)         
-         
-        XY = np.column_stack((xValues, yValues))                                                 
+                angleValues.append(alfa*360)                  
+        
         # Plot the randomly sampled point
-        rx, = plt.plot(randNode.X[0], randNode.X[1], "^k")                
+        rx, = plt.plot(randNode.X[0], randNode.X[1], "^k") 
+                     
         # Plot the Safe Ellipses
-        ec = EllipseCollection(widthValues, heightValues, angleValues, units='x', offsets=XY,
-                       transOffset=plt.axes().transData)        
+        XY = np.column_stack((xValues, yValues))                                                 
+        ec = EllipseCollection(widthValues, 
+                               heightValues, 
+                               angleValues, 
+                               units='x', 
+                               offsets=XY,
+                               transOffset=plt.axes().transData)        
         plt.axes().add_collection(ec)
         plt.pause(0.0001)
         if self.iter < self.maxIter-1:
@@ -827,8 +829,9 @@ class DR_RRTStar():
                 self.nodeList.append(minNode)
                 # Rewire the tree with newly added minNode                    
                 self.ReWire(nearIndices, minNode)    
-            # Plot the trajectory            
-            self.DrawGraph(randNode)                 
+            # Plot the trajectory 
+            if iter <= self.maxIter-1:
+                self.DrawGraph(randNode)                 
 
 ###############################################################################
 ###############################################################################
