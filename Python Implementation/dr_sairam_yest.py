@@ -106,7 +106,7 @@ class DR_RRTStar():
         self.maxrand        = randArea[1]               
         self.maxIter        = maxIter                
         self.obstacleList   = self.initParam[9]  
-        self.alfa           = [0.01 + (0.05-0.01)*random.random() for i in range(len(self.obstacleList))] # [0.05, 0.05, 0.05, 0.05, 0.05, 0.05]                
+        self.alfa           = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05] # [0.01 + (0.05-0.01)*random.random() for i in range(len(self.obstacleList))]                 
         # Prepare the DR-RRT* tree node with start coordinates
         self.start      = DR_RRTStar_Node() 
         self.start.X[0] = start[0]
@@ -255,7 +255,7 @@ class DR_RRTStar():
         """        
         while True:            
            # Get a random point in search space and initialize that as a DR-RRT* Node object with zero velocity          
-           randNode      = DR_RRTStar_Node() 
+           randNode      = DR_RRTStar_Node()           
            randNode.X[0] = random.uniform(self.minrand, self.maxrand)
            randNode.X[1] = random.uniform(self.minrand, self.maxrand)           
            if self.RandFreeCheck(randNode):
@@ -366,6 +366,30 @@ class DR_RRTStar():
     
     ###########################################################################
     
+    def PerformCollisionCheck(self,xTrajs):
+        """
+        Performs point-obstacle & line-obstacle check in distributionally robust fashion.
+        Input Parameters: 
+        xTrajs - collection of means & sigmas of points along the steered trajectory
+        """
+        for k, xTraj in enumerate(xTrajs): 
+            # Initializa the Flag
+            lineRectangleCollisionFreeFlag = True                    
+            # collisionFreeFlag = True: Safe Trajectory and False: Unsafe Trajectory
+            drCollisionFreeFlag = self.DRCollisionCheck(xTraj)  
+            if not drCollisionFreeFlag:
+                return False
+            # Check for Line Rectangle Collision only from second time step in the trajectory
+            # If Collision with obtacle happens, break - This is an additional check only
+            if k != 0:
+                lineRectangleCollisionFreeFlag = self.LineRectangleCollisionFreeCheck(xTrajs[k-1], xTrajs[k])
+                if not lineRectangleCollisionFreeFlag:
+                    return False
+        # If everything is fine, return True
+        return drCollisionFreeFlag and lineRectangleCollisionFreeFlag
+    
+    ###########################################################################
+    
     def DRCollisionCheck(self, trajNode):
         """
         Performs Collision Check Using Deterministic Tightening of Distributionally Robust Chance Constraint
@@ -374,20 +398,9 @@ class DR_RRTStar():
         """
         for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList):                        
             xrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(trajNode.Sigma, np.array([-1,0,0,0])))
-            yrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(trajNode.Sigma, np.array([0,-1,0,0])))            
+            yrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(trajNode.Sigma, np.array([0,-1,0,0])))
             xdrelax = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(trajNode.Sigma, np.array([1,0,0,0])))
             ydrelax = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(trajNode.Sigma, np.array([0,1,0,0])))
-            
-            # Plot and see if the obstacle is bloated
-            obstacle = Rectangle(xy      = [ox-xrelax, oy-yrelax], 
-                               width     = wd + xrelax + xdrelax, 
-                               height    = ht + yrelax + ydrelax, 
-                               angle     = 0, 
-                               color     = "b", 
-                               facecolor = "b")
-            ax = plt.axes()
-            ax.add_artist(obstacle)   
-            
             # Check if the node's inside the bloated obstacle
             if (trajNode.X[0] >= ox - xrelax and        # Left 
                 trajNode.X[0] <= ox + wd + xdrelax and  # Right
@@ -412,12 +425,12 @@ class DR_RRTStar():
         x2 = toPoint.X[0]
         y2 = toPoint.X[1]
         
-        for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList):             
+        for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList): 
             
             # Compute the relaxation values in each direction
             xrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(toPoint.Sigma, np.array([-1,0,0,0])))
-            yrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(toPoint.Sigma, np.array([0,-1,0,0])))            
-            xdrelax = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(toPoint.Sigma, np.array([1,0,0,0])))            
+            yrelax  = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(toPoint.Sigma, np.array([0,-1,0,0])))
+            xdrelax = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(toPoint.Sigma, np.array([1,0,0,0])))
             ydrelax = math.sqrt((1-alfa)/alfa)*LA.norm(np.dot(toPoint.Sigma, np.array([0,1,0,0])))
             
             # Prepare bloated version of min and max x,y positions of obstacle
@@ -592,8 +605,8 @@ class DR_RRTStar():
                     self.nodeList[nearIndex].means  = meanSequences[j,:,:,:]
                     self.nodeList[nearIndex].covar  = covarSequences[j,:,:,:] 
                     self.nodeList[nearIndex].X      = meanSequences[j,STEER_TIME,:,:]
-#                    # Update the children of nearNode about the change in cost
-#                    self.UpdateDescendantsCost(self.nodeList[nearIndex])                     
+                    # Update the children of nearNode about the change in cost
+                    self.UpdateDescendantsCost(self.nodeList[nearIndex])                     
                         
     ###########################################################################
     
@@ -624,9 +637,7 @@ class DR_RRTStar():
         """
         # Plot the Starting position        
         plt.plot(self.start.X[0], self.start.X[1], "xr")        
-        plt.axis([0, 1, 0, 1]) 
-        ax = plt.axes()
-        ax.set(xlabel='x', ylabel='y')
+        plt.axis([0, 1, 0, 1])
         plt.grid(True)  
         # Plot the rectangle obstacles
         obstacles = [Rectangle(xy        = [ox, oy], 
@@ -640,19 +651,20 @@ class DR_RRTStar():
     
     ###########################################################################
     
-    def DrawGraph(self):                
+    def DrawGraph(self, randNode=None):                
         """
-        Updates the Plot with uncertainty ellipse and trajectory at each time step        
+        Updates the Plot with uncertainty ellipse and trajectory at each time step
+        Input Parameters:
+        randNode: Node data representing the randomly sampled point                 
         """            
-        T            = STEER_TIME
         xValues      = []
         yValues      = []
         widthValues  = []
         heightValues = []
         angleValues  = []
-        lineObjects  = []        
+        lineObjects  = []
+        T            = STEER_TIME
         
-        # Plot the Trajectories
         for ellipseNode in self.nodeList:
             if ellipseNode is not None and ellipseNode.parent is not None:                                
                 xPlotValues  = []
@@ -667,12 +679,15 @@ class DR_RRTStar():
                 # Plot only the last ellipse in the trajectory                                             
                 alfa     = math.atan2(ellipseNode.means[T,1,0], ellipseNode.means[T,0,0])
                 elcovar  = np.asarray(ellipseNode.covar[T,:,:])            
-                elE, elV = LA.eig(elcovar[0:2,0:2])
+                elE, elV = np.linalg.eig(elcovar[0:2,0:2])
                 xValues.append(ellipseNode.means[T,0,0])
                 yValues.append(ellipseNode.means[T,1,0])
                 widthValues.append(math.sqrt(elE[0]))
                 heightValues.append(math.sqrt(elE[1]))
                 angleValues.append(alfa*360)                  
+        
+        # Plot the randomly sampled point
+        rx, = plt.plot(randNode.X[0], randNode.X[1], "^k") 
                      
         # Plot the Safe Ellipses
         XY = np.column_stack((xValues, yValues))                                                 
@@ -684,9 +699,8 @@ class DR_RRTStar():
                                transOffset=plt.axes().transData)        
         plt.axes().add_collection(ec)
         plt.pause(0.0001)
-        if self.iter == self.maxIter-1:            
-            self.PlotObstacles()
-        if self.iter < self.maxIter-1:            
+        if self.iter < self.maxIter-1:
+            rx.remove()
             ec.remove()
             for lx in lineObjects:
                 lx.remove() 
@@ -706,7 +720,7 @@ class DR_RRTStar():
             print("Iteration no:",iter)              
                 
             # Get a random feasible point in the space as a DR-RRT* Tree node
-            randNode = self.GetRandomPoint() 
+            randNode = self.GetRandomPoint()            
             
             # Get index of best DR-RRT* Tree node that is nearest to the random node                      
             nearestIndex = self.GetNearestListIndex(randNode)
@@ -718,7 +732,6 @@ class DR_RRTStar():
             # Check for Distributionally Robust Feasibility of the whole trajectory  
             for k, xTraj in enumerate(xTrajs): 
                 # Initialize the Flag
-                drCollisionFreeFlag            = True
                 lineRectangleCollisionFreeFlag = True                    
                 # collisionFreeFlag = True: Safe Trajectory and False: Unsafe Trajectory
                 drCollisionFreeFlag = self.DRCollisionCheck(xTraj)  
@@ -740,13 +753,11 @@ class DR_RRTStar():
                 # Choose the minimum cost path to connect the random node
                 minNode = self.ConnectViaMinimumCostPath(nearestIndex, nearIndices,randNode, minNode)
                 # Add the minNode to the DR-RRT* Tree
-                self.nodeList.append(minNode) 
+                self.nodeList.append(minNode)
                 # Rewire the tree with newly added minNode                    
-                self.ReWire(nearIndices, minNode) 
-                # Plot the randomly sampled point                
-                plt.plot(minNode.X[0], minNode.X[1], "^k") 
+                self.ReWire(nearIndices, minNode)    
                 # Plot the trajectory                 
-                self.DrawGraph()                 
+                self.DrawGraph(minNode)                 
 
 ###############################################################################
 ###############################################################################
@@ -758,7 +769,7 @@ def main():
     plt.close('all')
     
     # Create the DR_RRTStar Class Object by initizalizng the required data
-    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [0, 1], maxIter = 10)
+    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [0, 1], maxIter = 60)
     
     # Perform DR_RRTStar Tree Expansion
     dr_rrtstar.ExpandTree()    

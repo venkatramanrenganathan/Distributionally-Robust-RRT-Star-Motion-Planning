@@ -13,14 +13,15 @@ function [xnear, Snear] = NearestStateDistribution(x, T, P)
     m = length(T.NodeMeans);    
     for i=1:m
         if m == 1 
-            q = T.NodeMeans{m};
+            q = T.NodeMeans;
             d = (q - x)*P*(q - x)';
-            Q = T.NodeCovariances{m};
+            Q = T.NodeCovariances;
         else
-            if (T.NodeMeans{i} - x)*P*(T.NodeMeans{i} - x)' < d
-                q = T.NodeMeans{i};
+            if (T.NodeMeans(i) - x)*P*(T.NodeMeans(i) - x)' < d
+                q = T.NodeMeans(i);
                 d = (q - x)*P*(q - x)';                
-                Q = T.NodeCovariances{i}; % Q = T.NodeCovariances(n*(i-1)+1:n*i,:); - old implementations
+                Q = T.NodeCovariances{i}; 
+                %Q = T.NodeCovariances(n*(i-1)+1:n*i,:); %- old implementations
             end
         end
     end

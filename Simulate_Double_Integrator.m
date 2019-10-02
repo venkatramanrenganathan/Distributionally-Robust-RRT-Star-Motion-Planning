@@ -40,8 +40,8 @@ for k=1:K
     xrand = [rand_free(path_check_param) zeros(1,length(x0) - 2)]; % sample position from obstacle-free space (with zero velocity)
     plot(xrand(1), xrand(2), 'x', 'Color', [0 .5 .5]);
     [xnear, Snear] = NearestStateDistribution(xrand, T, P0); % find nearest vertex in the current tree
-%     [xtraj, S] = Steer_With_Kalman_Filter(xnear, Snear, xrand, A, B, Q, QT, R, Th, W); % steer system to xrand
-    [xtraj, S] = Steer_With_MPC_And_Kalman_Filter(xnear, Snear, xrand, A, B, C, Q, QT, R, Th, W); % steer system to xrand
+    [xtraj, S] = Steer_With_Kalman_Filter(xnear, Snear, xrand, A, B, Q, QT, R, Th, W); % steer system to xrand
+%     [xtraj, S] = Steer_With_MPC_And_Kalman_Filter(xnear, Snear, xrand, A, B, C, Q, QT, R, Th, W); % steer system to xrand
     
      for i=2:size(xtraj,2) 
          
