@@ -99,7 +99,7 @@ class DR_RRTStar():
         """
         # Add the Double Integrator Data  
         self.iter           = 0
-        self.controlPenalty = 0.02
+        self.controlPenalty = 0.05
         self.initParam      = self.GetDynamicsData()        
         self.minrand        = randArea[0]
         self.maxrand        = randArea[1]               
@@ -779,7 +779,7 @@ def main():
     plt.close('all')
     
     # Create the DR_RRTStar Class Object by initizalizng the required data
-    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [0, 1], maxIter = 20)
+    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [0, 1], maxIter = 40)
     
     # Perform DR_RRTStar Tree Expansion
     dr_rrtstar.ExpandTree()    
