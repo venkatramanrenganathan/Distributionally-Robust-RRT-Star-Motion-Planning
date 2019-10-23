@@ -758,7 +758,7 @@ def main():
     plt.close('all')
     
     # Create the DR_RRTStar Class Object by initizalizng the required data
-    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [0, 1], maxIter = 10)
+    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [0, 1], maxIter = 100)
     
     # Perform DR_RRTStar Tree Expansion
     dr_rrtstar.ExpandTree()    
