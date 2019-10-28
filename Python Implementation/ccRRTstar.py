@@ -113,7 +113,8 @@ class DR_RRTStar():
         self.ymaxrand       = randArea[3]               
         self.maxIter        = maxIter                
         self.obstacleList   = self.initParam[9]  
-        self.alfa           = [0.1, 0.1, 0.1, 0.1] # [0.01 + (0.05-0.01)*random.random() for i in range(len(self.obstacleList))]                 
+        self.alfaThreshold  = 0.05
+        self.alfa           = [self.alfaThreshold]*len(self.obstacleList)
         # Prepare DR-RRT* tree node with start coordinates & add to nodeList
         self.start = DR_RRTStar_Node()                                 
         # Set the covariance sequence to the initial condition value
@@ -155,10 +156,11 @@ class DR_RRTStar():
     
         # Obstacle Location Format [ox,oy,wd,ht]: 
         # ox, oy specifies the bottom left corner of rectangle with width: wd and height: ht
-        obstacleList = [(0.3, 1.0, 0.2, 0.5),
-                        (-0.5, 1.0, 0.2, 0.5),
-                        (0.1, 0.5, 0.2, 0.2),
-                        (-0.3, 0.5, 0.2, 0.2)] 
+        obstacleList = [(0.7, 1.2, 0.2, 0.5),
+                        (-1.0, 1.2, 0.2, 0.5),
+                        (0.4, 0.3, 0.2, 0.2),
+                        (-0.6, 0.3, 0.2, 0.2),
+                        (-0.3, 1.3, 0.6, 0.3)] 
         # Pack all the data into parameter for easy access across all functions
         initParam = [A,B,C,G,Q,QT,R,W,S0,obstacleList] 
         return initParam   
@@ -656,7 +658,7 @@ class DR_RRTStar():
         Plots the obstacles and the starting position.
         """
         # Plot the Starting position        
-        plt.plot(self.start.means[-1,0,:], self.start.means[-1,1,:], "sb",markersize=12)        
+        plt.plot(self.start.means[-1,0,:], self.start.means[-1,1,:], "Xr",markersize=15)        
         plt.axis([-1.3, 1.3, -0.3, 2.3])
         # Plot the environment boundary
         xy, w, h = (-1.2, -0.2), 2.4, 2.2
@@ -667,7 +669,11 @@ class DR_RRTStar():
                             boxcoords="data", pad=0.52,fontsize=20,
                             bboxprops=dict(facecolor = "none", edgecolor='k', 
                                       lw = 20))
-        plt.axes().add_artist(ab)
+        plt.axes().add_artist(ab)         
+        
+        # Change ticklabel font size
+        plt.xticks(fontsize=30)
+        plt.yticks(fontsize=30)
         # Plot the rectangle obstacles
         obstacles = [Rectangle(xy        = [ox, oy], 
                                width     = wd, 
@@ -677,6 +683,19 @@ class DR_RRTStar():
                                facecolor = "k",) for (ox, oy, wd, ht) in self.obstacleList]
         for obstacle in obstacles:
             plt.axes().add_artist(obstacle)     
+            
+        # Data for plotting the shaded goal region
+        x =  [-1.20,-1.15,-1.10,-1.05, -1.00]
+        y1 = [1.80,1.80,1.80,1.80,1.80]
+        
+        plt.text(-1.10, 2.05, 'GOAL \n REGION', rotation=0, size=18,horizontalalignment='center', verticalalignment='top', multialignment='center')
+
+        
+        # Shade the area between y1 and line y=2.10
+        plt.fill_between(x, y1, 2.10,
+                         facecolor="saddlebrown", # The fill color
+                         color='saddlebrown',       # The outline color
+                         alpha=0.5)          # Transparency of the fill
     
     ###########################################################################
     
@@ -709,7 +728,7 @@ class DR_RRTStar():
                 # Plot only the last ellipse in the trajectory                                             
                 alfa     = math.atan2(ellipseNode.means[-1,1,0], ellipseNode.means[-1,0,0])
                 elcovar  = np.asarray(ellipseNode.covar[-1,:,:])            
-                elE, elV = np.linalg.eig(elcovar[0:2,0:2])
+                elE, elV = LA.eig(elcovar[0:2,0:2])
                 xValues.append(ellipseNode.means[-1,0,0])
                 yValues.append(ellipseNode.means[-1,1,0])
                 widthValues.append(math.sqrt(elE[0]))
@@ -726,7 +745,7 @@ class DR_RRTStar():
                                angleValues, 
                                units='x', 
                                offsets=XY,
-                               facecolors="g",
+                               facecolors="b",
                                transOffset=plt.axes().transData)        
         plt.axes().add_collection(ec)
         plt.pause(0.0001)        

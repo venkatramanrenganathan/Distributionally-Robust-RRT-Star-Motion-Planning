@@ -3,7 +3,7 @@
 Created on Tue May 28 11:54:36 2019
 @author: vxr131730 - Venkatraman Renganathan
 
-This script simulates Path Planning with Distributionally Robust RRT*
+This script simulates Path Planning with Deterministc RRT*
 This script is tested in Python 3.7, Windows 10, 64-bit
 (C) Venkatraman Renganathan, 2019.  Email: vrengana@utdallas.edu
 
@@ -156,7 +156,7 @@ class DR_RRTStar():
                         (-1.0, 1.2, 0.2, 0.5),
                         (0.4, 0.3, 0.2, 0.2),
                         (-0.6, 0.3, 0.2, 0.2),
-                        (-0.3, 1.3, 0.6, 0.3)]
+                        (-0.3, 1.3, 0.6, 0.3)] 
         # Pack all the data into parameter for easy access across all functions
         initParam = [A,B,C,G,Q,QT,R,W,S0,obstacleList] 
         return initParam   
@@ -327,14 +327,14 @@ class DR_RRTStar():
         u           = np.zeros((T,m,1))                # Control Sequence
         x           = np.zeros((T+1,n,1))              # True State
         xEst        = np.zeros((T+1,n,1))              # Estimated State
-        x[0,:,:]    = fromNode.means[-1,:,:]           # Feed the initial condition to the True State        
-        xEst[0,:,:] = fromNode.means[-1,:,:]           # Feed the initial condition to the Estimated State
+        x[0,:,:]    = fromNode.means[-1,:,:]          # Feed the initial condition to the True State        
+        xEst[0,:,:] = fromNode.means[-1,:,:]          # Feed the initial condition to the Estimated State
         C           = np.identity(n)                   # Output Matrix
         H           = np.identity(n)                   # Sensor Noise Marix
         G           = np.identity(n)                   # Disturbance Matrix                
         KG          = np.zeros((T+1,n,n))              # Kalman Gain Matrix
         S           = np.zeros((T+1,n,n))              # True State Covariance Matrix
-        S[0,:,:]    = fromNode.covar[-1,:,:]           # Feed the final time condition to the Covariance Estimate
+        S[0,:,:]    = fromNode.covar[-1,:,:]            # Feed the final time condition to the Covariance Estimate
         A_bar       = np.zeros((T,2*n,2*n))            # New Concatenated Joint System Matrix
         B_bar       = np.zeros((T,2*n,m))              # New Concatenated Joint Input Matrix
         G_bar       = np.zeros((T,2*n,2*n))            # New Concatenated Joint Disturbance Matrix        
@@ -404,10 +404,10 @@ class DR_RRTStar():
         for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList):                        
             # left,right,bottom,top
             # Check if the node's inside the bloated obstacle
-            if (trajNode.X[0] >= ox - math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([1,0,0,0]).T @ trajNode.Sigma @ np.array([1,0,0,0])) and      # Left 
-                trajNode.X[0] <= ox + wd + math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([1,0,0,0]).T @ trajNode.Sigma @ np.array([1,0,0,0]))  and  # Right
-                trajNode.X[1] <= oy - math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([0,1,0,0]).T @ trajNode.Sigma @ np.array([0,1,0,0]))   and      # Bottom
-                trajNode.X[1] >= oy + ht + math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([0,1,0,0]).T @ trajNode.Sigma @ np.array([0,1,0,0])) ):   # Top
+            if (trajNode.X[0] >= ox      and  # Left 
+                trajNode.X[0] <= ox + wd and  # Right
+                trajNode.X[1] <= oy      and  # Bottom
+                trajNode.X[1] >= oy + ht ):   # Top
                 return False    # collision has occured
         return True  # safe     
     
@@ -430,10 +430,10 @@ class DR_RRTStar():
         for alfa, (ox, oy, wd, ht) in zip(self.alfa, self.obstacleList): 
             
             # Prepare bloated version of min and max x,y positions of obstacle
-            minX = ox - math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([1,0,0,0]).T @ toPoint.Sigma @ np.array([1,0,0,0]))
-            minY = oy - math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([0,1,0,0]).T @ toPoint.Sigma @ np.array([0,1,0,0]))
-            maxX = ox + wd + math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([1,0,0,0]).T @ toPoint.Sigma @ np.array([1,0,0,0]))
-            maxY = oy + ht + math.sqrt((1-alfa)/alfa)*math.sqrt(np.array([0,1,0,0]).T @ toPoint.Sigma @ np.array([0,1,0,0]))
+            minX = ox 
+            minY = oy 
+            maxX = ox + wd
+            maxY = oy + ht
             
             # Condition for Line to be Completely outside the rectangle
             if (x1 <= minX and x2 <= minX or
@@ -631,7 +631,7 @@ class DR_RRTStar():
         Plots the obstacles and the starting position.
         """
         # Plot the Starting position        
-        plt.plot(self.start.means[-1,0,:], self.start.means[-1,1,:], "Xr",markersize=15)        
+        plt.plot(self.start.means[-1,0,:], self.start.means[-1,1,:], "Xb",markersize=15)        
         plt.axis([-1.3, 1.3, -0.3, 2.3])
         # Plot the environment boundary
         xy, w, h = (-1.2, -0.2), 2.4, 2.2
@@ -718,7 +718,7 @@ class DR_RRTStar():
                                angleValues, 
                                units='x', 
                                offsets=XY,
-                               facecolors="g",
+                               facecolors="r",
                                transOffset=plt.axes().transData)        
         plt.axes().add_collection(ec)
         plt.pause(2.0001)        
@@ -754,9 +754,6 @@ class DR_RRTStar():
                 distanceRatio          = desiredDistance/actualDistance
                 randNode.means[-1,0,:] = (1-distanceRatio)*self.nodeList[nearestIndex].means[-1,0,:] + distanceRatio*randNode.means[-1,0,:]
                 randNode.means[-1,1,:] = (1-distanceRatio)*self.nodeList[nearestIndex].means[-1,1,:] + distanceRatio*randNode.means[-1,1,:]                        
-                
-            # Get index of best DR-RRT* Tree node that is nearest to the random node                      
-            nearestIndex = self.GetNearestListIndex(randNode)
             
             # Steer from nearestNode to the randomNode using LQG Control
             # Returns a list of node points along the trajectory and cost
