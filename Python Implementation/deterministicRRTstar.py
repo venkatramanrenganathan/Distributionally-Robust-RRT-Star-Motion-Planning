@@ -90,23 +90,28 @@ class DR_RRTStar():
     Class for DR_RRT* Planning
     """
 
-    def __init__(self, start, randArea, maxIter):
+    def __init__(self, start, randArea, goalArea, maxIter):
         """
         Constructor function
         Input Parameters:
         start   : Start Position [x,y]         
         randArea: Ramdom Samping Area [xmin,xmax,ymin,ymax]
+        goalArea: Goal Area [xmin,xmax,ymin,ymax]
         maxIter : Maximum # of iterations to run for constructing DR-RRT* Tree
         """
         # Add the Double Integrator Data  
         self.iter           = 0
         self.controlPenalty = 0.02
-        self.plotFrequency  = 20
+        self.plotFrequency  = 200
         self.initParam      = self.GetDynamicsData()        
         self.xminrand       = randArea[0]
         self.xmaxrand       = randArea[1]               
         self.yminrand       = randArea[2]
-        self.ymaxrand       = randArea[3]               
+        self.ymaxrand       = randArea[3]  
+        self.xmingoal       = goalArea[0]
+        self.xmaxgoal       = goalArea[1]
+        self.ymingoal       = goalArea[2]
+        self.ymaxgoal       = goalArea[3]             
         self.maxIter        = maxIter                
         self.obstacleList   = self.initParam[9]  
         self.alfaThreshold  = 0.05
@@ -120,7 +125,7 @@ class DR_RRTStar():
             self.start.covar[k,:,:] = self.initParam[8]  
         self.nodeList = [self.start]             
         # Update the Global Variable Optimal Cost-To-Go Matrix 
-        self.initParam.append(self.CostToGo(self.initParam))          
+        self.initParam.append(self.CostToGo(self.initParam))              
     ###########################################################################
     
     def GetDynamicsData(self):
@@ -152,11 +157,11 @@ class DR_RRTStar():
     
         # Obstacle Location Format [ox,oy,wd,ht]: 
         # ox, oy specifies the bottom left corner of rectangle with width: wd and height: ht
-        obstacleList = [(0.7, 1.2, 0.2, 0.5),
-                        (-1.0, 1.2, 0.2, 0.5),
-                        (0.4, 0.3, 0.2, 0.2),
-                        (-0.6, 0.3, 0.2, 0.2),
-                        (-0.3, 1.3, 0.6, 0.3)] 
+        obstacleList = [(0.2, 1.2, 0.2, 0.5),
+                        (-0.9, 1.2, 0.25, 0.5),
+                        (0.2, 0.3, 0.2, 0.2),
+                        (-1.05, 0.2, 0.3, 0.4),
+                        (-0.6, 0.8, 0.6, 0.3)]
         # Pack all the data into parameter for easy access across all functions
         initParam = [A,B,C,G,Q,QT,R,W,S0,obstacleList] 
         return initParam   
@@ -248,12 +253,11 @@ class DR_RRTStar():
         Input Parameters:
         randNode : Node containing position data which has to be checked for collision 
         """
-        for ox, oy, wd, ht in self.obstacleList:            
-            relax = 2*self.alfaThreshold 
-            if (randNode.means[-1,0,:] >= ox - relax and 
-               randNode.means[-1,0,:] <= ox + wd + relax and
-               randNode.means[-1,1,:] >= oy - relax and
-               randNode.means[-1,1,:] <= oy + ht + relax):
+        for ox, oy, wd, ht in self.obstacleList:                         
+            if (randNode.means[-1,0,:] >= ox and 
+               randNode.means[-1,0,:] <= ox + wd and
+               randNode.means[-1,1,:] >= oy and
+               randNode.means[-1,1,:] <= oy + ht):
                 return False    # collision
         return True  # safe
     
@@ -406,8 +410,8 @@ class DR_RRTStar():
             # Check if the node's inside the bloated obstacle
             if (trajNode.X[0] >= ox      and  # Left 
                 trajNode.X[0] <= ox + wd and  # Right
-                trajNode.X[1] <= oy      and  # Bottom
-                trajNode.X[1] >= oy + ht ):   # Top
+                trajNode.X[1] >= oy      and  # Bottom
+                trajNode.X[1] <= oy + ht ):   # Top
                 return False    # collision has occured
         return True  # safe     
     
@@ -631,7 +635,7 @@ class DR_RRTStar():
         Plots the obstacles and the starting position.
         """
         # Plot the Starting position        
-        plt.plot(self.start.means[-1,0,:], self.start.means[-1,1,:], "Xb",markersize=15)        
+        plt.plot(self.start.means[-1,0,:], self.start.means[-1,1,:], "Xr",markersize=20)        
         plt.axis([-1.3, 1.3, -0.3, 2.3])
         # Plot the environment boundary
         xy, w, h = (-1.2, -0.2), 2.4, 2.2
@@ -658,17 +662,17 @@ class DR_RRTStar():
             plt.axes().add_artist(obstacle)     
             
         # Data for plotting the shaded goal region
-        x =  [-1.20,-1.15,-1.10,-1.05, -1.00]
-        y1 = [1.80,1.80,1.80,1.80,1.80]
+        goalHeight = self.ymingoal
+        x          = [-1.20,-1.15,-1.10,-1.05, -1.00]         
+        y1         = [goalHeight]*len(x)
         
-        plt.text(-1.10, 2.05, 'GOAL \n REGION', rotation=0, size=18,horizontalalignment='center', verticalalignment='top', multialignment='center')
+        plt.text(-1.10, 1.0, 'GOAL', rotation=0, weight="bold", color='white', size=20,horizontalalignment='center', verticalalignment='top', multialignment='center')
 
         
         # Shade the area between y1 and line y=2.10
-        plt.fill_between(x, y1, 2.10,
-                         facecolor="saddlebrown", # The fill color
-                         color='saddlebrown',       # The outline color
-                         alpha=0.5)          # Transparency of the fill
+        plt.fill_between(x, y1, self.ymaxgoal,
+                         facecolor="#CAB8CB", # The fill color
+                         color='#CAB8CB')     # The outline color 
     
     ###########################################################################
     
@@ -696,7 +700,7 @@ class DR_RRTStar():
                     xPlotValues.append(ellipseNode.means[k,0,0])
                     yPlotValues.append(ellipseNode.means[k,1,0]) 
                 # Plotting the risk bounded trajectories
-                lx, = plt.plot(xPlotValues, yPlotValues, "-b", alpha=0.2)
+                lx, = plt.plot(xPlotValues, yPlotValues, "#636D97", linewidth=2.0)
                 lineObjects.append(lx)  
                 # Plot only the last ellipse in the trajectory                                             
                 alfa     = math.atan2(ellipseNode.means[-1,1,0], ellipseNode.means[-1,0,0])
@@ -718,10 +722,11 @@ class DR_RRTStar():
                                angleValues, 
                                units='x', 
                                offsets=XY,
-                               facecolors="r",
+                               facecolors="#C59434",
                                transOffset=plt.axes().transData)        
+        ec.set_alpha(0.5)
         plt.axes().add_collection(ec)
-        plt.pause(2.0001)        
+        plt.pause(0.0001)        
         if not lastFlag:            
             ec.remove() 
             rx.remove()
@@ -794,10 +799,10 @@ def main():
     plt.close('all')
     
     # Create the DR_RRTStar Class Object by initizalizng the required data
-    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [-1.2, 1.2, -0.1, 2.1], maxIter=1000)
+    dr_rrtstar = DR_RRTStar(start = [0, 0], randArea = [-1.2, 1.2, -0.1, 2.1], goalArea = [-1.2,-1.0,0.8,1.1], maxIter=1200)
     
     # Perform DR_RRTStar Tree Expansion
-    dr_rrtstar.ExpandTree()    
+    dr_rrtstar.ExpandTree()      
 
 ###############################################################################
 
