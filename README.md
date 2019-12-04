@@ -1,4 +1,4 @@
-# Distributionally-Robust-RRT-Star-Motion-Planning
+# Distributionally-Robust-RRT*-Motion-Planning
 Extending RRT Star Algorithm with Distributionally Robust Collision Check
 
 Implements Distributionally Robust Collision Check Apart from Integrated Perception & Control formulation
