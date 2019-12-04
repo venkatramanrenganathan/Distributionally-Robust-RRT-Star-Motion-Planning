@@ -28,6 +28,8 @@ from matplotlib.offsetbox import AnnotationBbox, AuxTransformBox
 from scipy.linalg import block_diag
 from numpy.linalg import inv
 from numpy import linalg as LA
+import time
+
 np.seterr(divide = 'ignore') 
 
 ###############################################################################
@@ -811,8 +813,10 @@ def main():
 ###############################################################################
 
 if __name__ == '__main__':
+    t1 = time.time()
     main()
-    
+    t2 = time.time()
+    print("total execution time: ", t2 - t1)
 ###############################################################################
 ###############################################################################
 ###################### END OF THE FILE ########################################
